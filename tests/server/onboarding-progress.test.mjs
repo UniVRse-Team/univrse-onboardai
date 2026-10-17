@@ -114,7 +114,10 @@ test('every built-in template is valid: the user’s areas, 11 required role-too
       ],
     );
     for (const step of template.areas.flatMap((a) => a.steps).filter((s) => s.check)) {
-      assert.ok([handbookTitle, roleToolsTitle].includes(step.check.sourceTitle), step.id);
+      assert.ok(
+        [handbookTitle, roleToolsTitle, peopleSupportTitle].includes(step.check.sourceTitle),
+        step.id,
+      );
       if (step.check.type === 'choice')
         assert.ok(step.check.options.some((o) => o.id === step.check.correctOptionId));
       else {
@@ -190,7 +193,7 @@ test('choice checks do not give the answer away: opaque option ids, varied posit
     const checks = builtInTemplate(track)
       .areas.flatMap((area) => area.steps.map((step) => step.check))
       .filter((check) => check && check.type === 'choice');
-    assert.equal(checks.length, 3);
+    assert.equal(checks.length, 5);
     // Option ids are opaque: never a letter or a number that names a position.
     for (const check of checks)
       for (const option of check.options)
