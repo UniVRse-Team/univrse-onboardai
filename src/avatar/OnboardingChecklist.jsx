@@ -22,6 +22,7 @@ export function useOnboardingChecklist() {
       setExtras({
         accessStepIds: handbook?.toolAccessSteps || [],
         tools: saved?.verifications?.roleTools?.tools || {},
+        responsibilities: saved?.verifications?.roleTools?.responsibilities || null,
       });
       setFailed(false);
     } catch {

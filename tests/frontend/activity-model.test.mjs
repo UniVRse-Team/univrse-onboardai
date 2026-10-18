@@ -38,18 +38,13 @@ test('each learning task resolves to the right kind of page; Documentation and u
   const kind = (id) => resolveActivity(id, onboarding, content)?.kind ?? null;
   assert.equal(kind('policies.data-protection'), 'policy');
   assert.equal(kind('alignment.products-customers'), 'quiz');
-  assert.equal(kind('role-tools.gsheet-account'), 'access');
   assert.equal(kind('role-tools.ai-readiness-training'), 'ai');
-  assert.equal(kind('role-tools.gsheet-training-sop'), 'check');
   assert.equal(kind('role-tools.responsibilities'), 'checklist');
   assert.equal(kind('team-support.support-routing'), 'quiz');
   assert.equal(kind('team-support.working-preferences'), 'prefs');
-  // plain setup tasks are confirmed on the dashboard; they have no page
-  assert.equal(kind('role-tools.email-signature'), null);
-  assert.equal(kind('policies.company-sop-policies'), null);
-  assert.equal(kind('policies.sop-internal-meeting'), null);
-  assert.equal(kind('alignment.social-media-accounts'), null);
-  assert.equal(kind('documentation.tax-id-documents'), null);
+  // plain tasks are confirmed on the dashboard; they have no page
+  assert.equal(kind('documentation.employee-information-form'), null);
+  assert.equal(kind('alignment.mission-values'), 'quiz');
   assert.equal(kind('nonsense'), null);
   assert.equal(kind(''), null);
 });

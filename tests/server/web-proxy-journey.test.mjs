@@ -48,27 +48,20 @@ test('through the web proxy: journey, briefing, check, agent-action, HR and voic
 
     const onboarding = await me.get('/api/me/onboarding');
     assert.equal(onboarding.status, 200);
-    const chatGroups = onboarding.body.areas
+    const handbook = onboarding.body.areas
       .flatMap((a) => a.steps)
-      .find((s) => s.id === 'team-support.company-chat-groups');
-    assert.deepEqual([chatGroups.briefingRequired, chatGroups.briefed], [true, false]);
-    const gated = await me.post(
-      '/api/me/onboarding/steps/team-support.company-chat-groups/complete',
-    );
-    assert.deepEqual([gated.status, gated.body.code], [409, 'BRIEFING_REQUIRED']);
-    const briefed = await me.post(
-      '/api/me/onboarding/steps/team-support.company-chat-groups/briefing',
-      {
-        completion: 'listened',
-      },
-    );
-    assert.equal(briefed.status, 200);
-    assert.equal(
-      (await me.post('/api/me/onboarding/steps/team-support.company-chat-groups/complete')).status,
-      200,
-    );
+      .find((s) => s.id === 'policies.employee-handbook');
+    assert.deepEqual([handbook.briefingRequired, handbook.briefed], [true, false]);
     const check = await me.get('/api/me/onboarding/steps/policies.employee-handbook/check');
     assert.deepEqual([check.status, check.body.code], [409, 'BRIEFING_REQUIRED']);
+    const briefed = await me.post('/api/me/onboarding/steps/policies.employee-handbook/briefing', {
+      completion: 'listened',
+    });
+    assert.equal(briefed.status, 200);
+    assert.equal(
+      (await me.get('/api/me/onboarding/steps/policies.employee-handbook/check')).status,
+      200,
+    );
     assert.equal((await me.get('/api/me/ai-proficiency')).status, 200);
     assert.equal((await me.get('/api/me/quick-questions')).status, 200);
     assert.equal((await me.get('/api/me/first-day')).status, 200);

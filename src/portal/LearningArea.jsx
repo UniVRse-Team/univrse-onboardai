@@ -10,13 +10,11 @@ import {
 } from './LearningActivities';
 import { saveHandoff, stepAskHandoff } from '../access/support-flow.mjs';
 import {
-  ROUTING_ACTIVITY,
   RESPONSIBILITIES_ACTIVITY,
   activityPath,
   hasAlignmentActivity,
   hasPolicyActivity,
   hasResponsibilitiesActivity,
-  hasRoutingActivity,
 } from './activity-model.mjs';
 import {
   learningSummary,
@@ -351,7 +349,8 @@ export default function LearningArea({ area, onUpdated, firstDay, expanded, navi
           )}
         {area.id === 'role-tools' && hasResponsibilitiesActivity(content) && (
           <ActivityLauncher
-            title="Role responsibilities checklist"
+            id={'learning-' + RESPONSIBILITIES_ACTIVITY}
+            title="Roles & Responsibilities"
             done={Boolean(records.roleTools?.responsibilities?.acknowledgedAt)}
             status={
               records.roleTools?.responsibilities?.acknowledgedAt ? 'Acknowledged' : 'Not Started'
@@ -377,21 +376,6 @@ export default function LearningArea({ area, onUpdated, firstDay, expanded, navi
               Chat-group invitations come from your onboarding coordinator. Further team contacts
               have not been added yet (content requirement). Your requests to HR are listed below.
             </p>
-            {hasRoutingActivity(content) && (
-              <ActivityLauncher
-                title="Find the right contact"
-                done={Boolean(records.teamSupport?.routing?.passed)}
-                status={
-                  records.teamSupport?.routing?.passed
-                    ? 'Completed'
-                    : records.teamSupport?.routing?.attempts
-                      ? 'In Progress'
-                      : 'Not Started'
-                }
-                label="Start Activity"
-                onOpen={() => navigate(activityPath(ROUTING_ACTIVITY))}
-              />
-            )}
           </>
         )}
         {area.steps.map((step) => (

@@ -16,6 +16,7 @@ import {
   trackOf,
   tracks,
 } from '../../server/onboarding-content.mjs';
+import { templateWithAdditionalPolicies } from './template-fixtures.mjs';
 import {
   StepRuleError,
   addDays,
@@ -67,11 +68,11 @@ const areaTitles = {
 const requiredIds = (template) =>
   template.areas.flatMap((area) => area.steps.filter((s) => s.required).map((s) => s.id));
 const expectedRequiredByArea = {
-  documentation: 3,
-  policies: 3,
-  alignment: 4,
-  'role-tools': 10,
-  'team-support': 4,
+  documentation: 1,
+  policies: 2,
+  alignment: 3,
+  'role-tools': 0,
+  'team-support': 0,
 };
 
 test('every built-in template is valid: the user’s areas, their required step counts, a check on each check step', () => {
@@ -103,16 +104,16 @@ test('every built-in template is valid: the user’s areas, their required step 
     }
     assert.ok(template.areas[0].steps.every((step) => step.completion === 'hr_verify'));
     assert.equal(template.areas[1].steps[0].completion, 'check');
+    assert.equal(template.areas[1].steps[1].completion, 'self');
     assert.ok(template.areas[2].steps.every((step) => step.completion === 'self'));
     assert.equal(template.version, templateVersion);
-    assert.equal(templateVersion, 8);
-    // The Employee Handbook is a choice check; the other two policy steps are read and confirmed.
+    assert.equal(templateVersion, 9);
+    // The Employee Handbook is a choice check; the Business Conduct Policy is read and confirmed.
     assert.deepEqual(
       template.areas[1].steps.map((step) => [step.id, step.check?.type ?? null]),
       [
         ['policies.employee-handbook', 'choice'],
         ['policies.company-sop-policies', null],
-        ['policies.sop-internal-meeting', null],
       ],
     );
     for (const step of template.areas.flatMap((a) => a.steps).filter((s) => s.check)) {
@@ -154,8 +155,6 @@ test('every built-in template is valid: the user’s areas, their required step 
       assert.ok(sentences.length >= 2 && sentences.length <= 4, `${track} ${step.id}`);
       assert.doesNotMatch(text, /https?:|www\.|@|\n|^\s*[-•*#]|[#*•]/, step.id);
     }
-    assert.equal(findStep(template, 'role-tools.gsheet-training-sop').step.completion, 'check');
-    assert.equal(findStep(template, 'role-tools.gsheet-daily-updates').step.completion, 'check');
     assert.equal(findStep(template, 'role-tools.ai-readiness-training').step.required, false);
     // Two optional steps: the AI Readiness self-assessment and working preferences.
     assert.deepEqual(
@@ -163,11 +162,11 @@ test('every built-in template is valid: the user’s areas, their required step 
       ['role-tools.ai-readiness-training', 'team-support.working-preferences'],
     );
   }
-  // Every track follows the same checklist: 3 + 3 + 4 + 10 + 4 required, 2 optional.
-  assert.equal(stepIds(builtInTemplate('employee')).length, 26);
+  // Every track follows the same checklist: 1 + 2 + 3 required, 2 optional (8 steps).
+  assert.equal(stepIds(builtInTemplate('employee')).length, 8);
   assert.deepEqual(stepIds(builtInTemplate('intern')), stepIds(builtInTemplate('employee')));
   assert.deepEqual(stepIds(builtInTemplate('contractor')), stepIds(builtInTemplate('employee')));
-  assert.equal(requiredIds(builtInTemplate('contractor')).length, 24);
+  assert.equal(requiredIds(builtInTemplate('contractor')).length, 6);
   // A missing or unknown track is employee.
   assert.equal(trackOf(null), 'employee');
   assert.equal(trackOf({ job: { track: '' } }), 'employee');
@@ -175,12 +174,37 @@ test('every built-in template is valid: the user’s areas, their required step 
   assert.equal(builtInTemplate('nonsense').track, 'employee');
 });
 
+test('the built-in employee checklist has exactly these tasks in each area', () => {
+  const titles = Object.fromEntries(
+    builtInTemplate('employee').areas.map((area) => [
+      area.id,
+      area.steps.map((step) => [step.title, step.required]),
+    ]),
+  );
+  assert.deepEqual(titles, {
+    documentation: [['Upload your Employee Information Form', true]],
+    policies: [
+      ['Company rules (Employee Handbook)', true],
+      ['Read the Business Conduct Policy', true],
+    ],
+    alignment: [
+      ['Read and Understand Company Overview', true],
+      ['Complete Onboarding Quiz Part 1', true],
+      ['Complete Onboarding Quiz Part 2', true],
+    ],
+    'role-tools': [['AI Readiness self-assessment and practice task (optional)', false]],
+    'team-support': [['Share your working preferences or support needs (optional)', false]],
+  });
+});
+
 test('choice checks do not give the answer away: opaque option ids, varied positions, similar lengths', () => {
   for (const track of tracks) {
-    const checks = builtInTemplate(track)
+    // The built-in checklist has one choice check left; the fixture adds the other
+    // approved policy checks so the comparison across checks is still exercised.
+    const checks = templateWithAdditionalPolicies(track)
       .areas.flatMap((area) => area.steps.map((step) => step.check))
       .filter((check) => check && check.type === 'choice');
-    assert.equal(checks.length, 4);
+    assert.equal(checks.length, 2);
     // Option ids are opaque: never a letter or a number that names a position.
     for (const check of checks)
       for (const option of check.options)
@@ -213,8 +237,6 @@ test('a malformed stored template is rejected so the built-in one is used', () =
     { areas: [] },
     { areas: [...good.areas].reverse() },
     firstArea((a) => ({ ...a, steps: [] })),
-    // Only optional steps: nothing to count.
-    firstArea((a) => ({ ...a, steps: a.steps.map((s) => ({ ...s, required: false })) })),
     firstArea((a) => ({ ...a, steps: [{ ...a.steps[0], required: 'yes' }] })),
     {
       areas: good.areas.map((a, i) =>
@@ -226,6 +248,13 @@ test('a malformed stored template is rejected so the built-in one is used', () =
     { areas: good.areas.map((a) => ({ ...a, steps: [...a.steps, a.steps[0]] })) },
   ];
   for (const doc of broken) assert.equal(validTemplate(doc, 'employee'), null);
+  // An area with only optional steps is valid (Role & Tools and People & Support are).
+  assert.ok(
+    validTemplate(
+      firstArea((a) => ({ ...a, steps: a.steps.map((s) => ({ ...s, required: false })) })),
+      'employee',
+    ),
+  );
   // Defaults: required true, threshold 70, icon ''.
   const loose = validTemplate(
     {
@@ -247,15 +276,16 @@ test('progress maths: a new employee is at 0% with the first Documentation step 
   assert.equal(view.track, 'employee');
   assert.deepEqual(
     [view.percent, view.threshold, view.complete, view.waitingOnHr],
+    // Role & Tools and People & Support have no required step, so they stay out of the percent.
     [0, 70, false, 0],
   );
   assert.deepEqual(view.nextStep, {
-    id: 'documentation.tax-id-documents',
-    title: 'Pass over a copy of your IC (front and back)',
+    id: 'documentation.employee-information-form',
+    title: 'Upload your Employee Information Form',
     areaId: 'documentation',
     areaTitle: 'Documentation',
     completion: 'hr_verify',
-    askAlya: 'How do I submit a copy of my IC?',
+    askAlya: 'How do I submit my Employee Information Form?',
   });
   assert.deepEqual(Object.keys(view.areas[0]), [
     'id',
@@ -294,11 +324,11 @@ test('progress maths: a new employee is at 0% with the first Documentation step 
   assert.deepEqual(
     view.areas.map((a) => [a.done, a.total, a.meetsThreshold]),
     [
+      [0, 1, false],
+      [0, 2, false],
       [0, 3, false],
-      [0, 3, false],
-      [0, 4, false],
-      [0, 10, false],
-      [0, 4, false],
+      [0, 0, true],
+      [0, 0, true],
     ],
   );
   // No check answer or rubric in the view.
@@ -307,7 +337,7 @@ test('progress maths: a new employee is at 0% with the first Documentation step 
   // A record with only briefedAt is still todo, and briefed.
   const briefedOnly = buildOnboarding(template, {
     steps: {
-      'documentation.tax-id-documents': {
+      'documentation.employee-information-form': {
         briefedAt: '2026-10-15T01:00:00.000Z',
         briefedBy: 'read',
       },
@@ -317,7 +347,7 @@ test('progress maths: a new employee is at 0% with the first Documentation step 
     [briefedOnly.areas[0].steps[0].status, briefedOnly.areas[0].steps[0].briefed],
     ['todo', true],
   );
-  assert.equal(briefedOnly.nextStep.id, 'documentation.tax-id-documents');
+  assert.equal(briefedOnly.nextStep.id, 'documentation.employee-information-form');
 });
 
 test('progress maths: area percents count required steps only; submitted steps wait on HR', () => {
@@ -326,31 +356,34 @@ test('progress maths: area percents count required steps only; submitted steps w
   assert.deepEqual(
     view.areas.map((a) => [a.id, a.done, a.total, a.percent]),
     [
-      ['documentation', 0, 3, 0],
-      ['policies', 0, 3, 0],
-      ['alignment', 1, 4, 25],
-      ['role-tools', 0, 10, 0],
-      ['team-support', 0, 4, 0],
+      ['documentation', 0, 1, 0],
+      ['policies', 0, 2, 0],
+      ['alignment', 1, 3, 33],
+      ['role-tools', 0, 0, 100],
+      ['team-support', 0, 0, 100],
     ],
   );
-  assert.equal(view.percent, 5);
+  assert.equal(view.percent, 11);
   view = buildOnboarding(
     template,
     progressOf({
-      'documentation.tax-id-documents': 'submitted',
+      'documentation.employee-information-form': 'submitted',
       'alignment.mission-values': 'done',
     }),
   );
   assert.equal(view.waitingOnHr, 1);
-  assert.equal(view.percent, 5);
-  assert.equal(view.nextStep.id, 'documentation.personal-bank-details');
+  assert.equal(view.percent, 11);
+  assert.equal(view.nextStep.id, 'policies.employee-handbook');
   assert.equal(view.areas[0].steps[0].status, 'submitted');
   assert.equal(view.areas[0].steps[0].updatedAt, '2026-10-15T01:00:00.000Z');
   assert.equal(view.areas[0].steps[0].source, 'employee');
   // Unknown step ids and unknown statuses are ignored.
   view = buildOnboarding(
     template,
-    progressOf({ 'documentation.nonsense': 'done', 'documentation.tax-id-documents': 'approved' }),
+    progressOf({
+      'documentation.nonsense': 'done',
+      'documentation.employee-information-form': 'approved',
+    }),
   );
   assert.equal(view.percent, 0);
   assert.equal(view.areas[0].steps[0].status, 'todo');
@@ -361,7 +394,7 @@ test('progress maths: area percents count required steps only; submitted steps w
   assert.equal(view.areas[4].steps.at(-1).status, 'todo');
 });
 
-test('the 70% rule: 70% of the required steps (all 3 in three-step areas, 7 of 10 in role-tools) in every area is complete; 1 fewer in any area is not', () => {
+test('the 70% rule: 70% of the required steps (all of them in the one-step areas, all 3 in alignment; areas with no required step always meet it) in every area is complete; 1 fewer in any area is not', () => {
   for (const track of tracks) {
     const template = builtInTemplate(track);
     const minForArea = (area) => {
@@ -382,9 +415,10 @@ test('the 70% rule: 70% of the required steps (all 3 in three-step areas, 7 of 1
       track,
     );
     assert.equal(view.complete, true, track);
-    // The last required step of each area is still todo: the first one is next.
-    assert.equal(view.nextStep.id, 'alignment.role-contribution', track);
+    // Every required step is done, so there is no next step.
+    assert.equal(view.nextStep, null, track);
     for (const area of template.areas) {
+      if (!area.steps.some((s) => s.required)) continue;
       const fewer = { ...atThreshold };
       const count = minForArea(area);
       delete fewer[area.steps.filter((s) => s.required)[count - 1].id];
@@ -395,8 +429,8 @@ test('the 70% rule: 70% of the required steps (all 3 in three-step areas, 7 of 1
       // The next step is in the area below the threshold.
       assert.equal(view.nextStep.areaId, area.id, `${track} ${area.id}`);
     }
-    // A submitted step is not done: 2 done + 1 submitted is below the threshold.
-    const pending = { ...atThreshold, [template.areas[0].steps[2].id]: 'submitted' };
+    // A submitted step is not done: the one Documentation step submitted is below the threshold.
+    const pending = { ...atThreshold, [template.areas[0].steps[0].id]: 'submitted' };
     view = buildOnboarding(template, progressOf(pending));
     assert.deepEqual([view.areas[0].meetsThreshold, view.complete], [false, false]);
   }
@@ -429,54 +463,41 @@ test('next step: the first area below the threshold that has a todo step, else a
       .steps.filter((s) => s.required)
       .map((s) => s.id);
   const done = (list) => Object.fromEntries(list.map((id) => [id, 'done']));
-  // Documentation meets the threshold (3 of 3) and policies does not: next is
-  // in policies, although documentation still has a todo step.
-  let view = buildOnboarding(template, progressOf(done(ids('documentation').slice(0, 3))));
+  // Documentation meets the threshold (1 of 1) and policies does not: next is policies.
+  let view = buildOnboarding(template, progressOf(done(ids('documentation'))));
   assert.equal(view.nextStep.id, 'policies.employee-handbook');
-  // Policies below the threshold but its remaining steps all wait on HR (no
-  // todo there): the next area below the threshold with a todo step.
-  const policies = ids('policies');
+  // The handbook waits on HR, so the next todo step in Policies comes next.
   view = buildOnboarding(
     template,
-    progressOf({
-      ...done(ids('documentation').slice(0, 3)),
-      [policies[0]]: 'done',
-      [policies[1]]: 'submitted',
-      [policies[2]]: 'submitted',
-    }),
+    progressOf({ ...done(ids('documentation')), [ids('policies')[0]]: 'submitted' }),
   );
-  assert.equal(view.nextStep.id, 'alignment.mission-values');
-  // Every area at the threshold: the first required todo step anywhere. The
-  // three-step areas need all three; the others leave their first step todo.
-  const every = Object.fromEntries(
-    template.areas.flatMap((a) => {
-      const required = a.steps.filter((s) => s.required);
-      return required.slice(required.length > 3 ? 1 : 0).map((s) => [s.id, 'done']);
-    }),
-  );
-  view = buildOnboarding(template, progressOf(every));
+  assert.equal(view.nextStep.id, 'policies.company-sop-policies');
+  // Every area at the threshold but with a todo step left: the first required todo
+  // step anywhere. A lower threshold (60%) lets Alignment meet it with 2 of 3.
+  const lenient = { ...template, threshold: 60 };
+  const every = {
+    ...done(ids('documentation')),
+    ...done(ids('policies')),
+    ...done(ids('alignment').slice(0, 2)),
+  };
+  view = buildOnboarding(lenient, progressOf(every));
   assert.equal(view.complete, true);
-  assert.equal(view.nextStep.id, 'alignment.mission-values');
-  // The first one submitted: the next todo step anywhere.
+  assert.equal(view.nextStep.id, 'alignment.role-contribution');
+  // That one submitted: nothing left to do, so no next step.
   view = buildOnboarding(
-    template,
-    progressOf({ ...every, 'alignment.mission-values': 'submitted' }),
+    lenient,
+    progressOf({ ...every, 'alignment.role-contribution': 'submitted' }),
   );
-  assert.equal(view.nextStep.id, 'role-tools.gsheet-account');
-  // Every remaining required step submitted: null.
-  const rest = Object.fromEntries(
-    template.areas
-      .filter((a) => a.steps.filter((s) => s.required).length > 3)
-      .map((a) => [a.steps.find((s) => s.required).id, 'submitted']),
-  );
-  view = buildOnboarding(template, progressOf({ ...every, ...rest }));
+  assert.equal(view.nextStep, null);
+  // Everything required done: null.
+  view = buildOnboarding(template, progressOf(done(requiredIds(template))));
   assert.equal(view.nextStep, null);
 });
 
 test('completion rules: self, hr_verify, check and optional steps', () => {
   const template = builtInTemplate('employee');
   const self = findStep(template, 'alignment.mission-values').step;
-  const verify = findStep(template, 'documentation.tax-id-documents').step;
+  const verify = findStep(template, 'documentation.employee-information-form').step;
   const check = findStep(template, 'policies.employee-handbook').step;
   const optional = findStep(template, 'team-support.working-preferences').step;
   const done = { status: 'done', source: 'employee' };
@@ -555,13 +576,13 @@ test('chips: the next-step chip first, personal chips up to the day after the st
   // Before, on and the day after the start date: personal chips.
   for (const today of ['2026-10-15', '2026-11-02', '2026-11-03'])
     assert.deepEqual(ids(pick('2026-11-02', today)), [
-      'step:documentation.tax-id-documents',
+      'step:documentation.employee-information-form',
       'day-one-arrival',
       'day-one-host',
     ]);
   // Two days after: knowledge chips.
   assert.deepEqual(ids(pick('2026-11-02', '2026-11-04')), [
-    'step:documentation.tax-id-documents',
+    'step:documentation.employee-information-form',
     'company-background',
     'working-hours',
   ]);
@@ -569,11 +590,11 @@ test('chips: the next-step chip first, personal chips up to the day after the st
   assert.deepEqual(ids(pick(null, '2027-01-01')).slice(1), ['day-one-arrival', 'day-one-host']);
   // The step chip asks the step's question and names the step.
   assert.deepEqual(pick(null, '2026-10-15')[0], {
-    id: 'step:documentation.tax-id-documents',
-    label: 'How do I submit a copy of my IC?',
-    question: 'How do I submit a copy of my IC?',
+    id: 'step:documentation.employee-information-form',
+    label: 'How do I submit my Employee Information Form?',
+    question: 'How do I submit my Employee Information Form?',
     kind: 'knowledge',
-    stepId: 'documentation.tax-id-documents',
+    stepId: 'documentation.employee-information-form',
   });
   assert.deepEqual(pick(null, '2026-10-15')[1], {
     id: 'day-one-arrival',
@@ -614,7 +635,7 @@ test('stored chip lists are checked: unknown kinds, personal chips without a typ
     null,
     [{ ...chips[0], kind: 'other' }],
     [{ ...chips[3], personal: undefined }],
-    [{ ...chips[0], id: 'step:documentation.tax-id-documents' }],
+    [{ ...chips[0], id: 'step:documentation.employee-information-form' }],
     [chips[0], chips[0]],
   ])
     assert.equal(validChips(list), null);
