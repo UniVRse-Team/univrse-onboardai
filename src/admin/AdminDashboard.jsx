@@ -72,6 +72,44 @@ export default function AdminDashboard({ navigate }) {
     }
   }
 
+  const [editCompany, setEditCompany] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editError, setEditError] = useState('');
+  const [editing, setEditing] = useState(false);
+
+  function openEditModal(company) {
+    setEditCompany(company);
+    setEditName(company.name || '');
+    setEditError('');
+  }
+
+  async function handleRenameSubmit(e) {
+    e.preventDefault();
+    const trimmed = editName.trim();
+    if (!trimmed) {
+      setEditError('Enter the company name.');
+      return;
+    }
+    if (trimmed.length > 80) {
+      setEditError('Keep the name to 80 characters or fewer.');
+      return;
+    }
+    setEditError('');
+    setEditing(true);
+    try {
+      const res = await adminApi.renameCompany(editCompany.id, trimmed);
+      const updated = res.company;
+      setCompanies((prev) =>
+        prev ? prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)) : [updated],
+      );
+      setEditCompany(null);
+    } catch (err) {
+      setEditError(companyErrorMessage(err));
+    } finally {
+      setEditing(false);
+    }
+  }
+
   return (
     <div className="admin-dashboard">
       <header className="admin-heading">
@@ -208,13 +246,22 @@ export default function AdminDashboard({ navigate }) {
                     {formatDateTime(company.createdAt)}
                   </td>
                   <td>
-                    <button
-                      type="button"
-                      className="admin-button secondary"
-                      onClick={() => navigate(`/admin/companies/${company.id}`)}
-                    >
-                      Manage
-                    </button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        type="button"
+                        className="admin-button secondary"
+                        onClick={() => openEditModal(company)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="admin-button secondary"
+                        onClick={() => navigate(`/admin/companies/${company.id}`)}
+                      >
+                        Manage
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -309,6 +356,57 @@ export default function AdminDashboard({ navigate }) {
                   disabled={submitting || !newForm.name.trim()}
                 >
                   {submitting ? 'Creating…' : 'Create company'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editCompany && (
+        <div className="admin-dialog-backdrop" onClick={() => setEditCompany(null)}>
+          <div className="admin-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3 className="admin-dialog-title">Edit company</h3>
+            <p className="admin-dialog-body">
+              Update the display name for <strong>{editCompany.name}</strong> (Slug ID:{' '}
+              <code>{editCompany.id}</code>).
+            </p>
+
+            {editError && (
+              <div className="admin-banner error" role="alert">
+                {editError}
+              </div>
+            )}
+
+            <form onSubmit={handleRenameSubmit}>
+              <div className="admin-form-group">
+                <label htmlFor="edit-company-name">Company name (required)</label>
+                <input
+                  id="edit-company-name"
+                  type="text"
+                  maxLength={80}
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  autoFocus
+                  required
+                />
+              </div>
+
+              <div className="admin-dialog-actions">
+                <button
+                  type="button"
+                  className="admin-button secondary"
+                  onClick={() => setEditCompany(null)}
+                  disabled={editing}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="admin-button primary"
+                  disabled={editing || !editName.trim() || editName.trim() === editCompany.name}
+                >
+                  {editing ? 'Saving…' : 'Save changes'}
                 </button>
               </div>
             </form>

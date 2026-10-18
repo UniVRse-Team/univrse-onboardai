@@ -5,6 +5,7 @@ import {
   validateDigestFile,
   digestErrorMessage,
   validateNewCompany,
+  companyErrorMessage,
   splitCreatedHr,
   splitResetHr,
   copyHrText,
@@ -233,4 +234,27 @@ test('saveErrorInfo maps conflict and validation errors', () => {
   const warnings = warningLines([{ field: 'faqs[0].answer', problem: 'too_long' }]);
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /Frequently asked questions, item 1, Answer/);
+});
+
+test('company rename validation and error messages handle empty, long and taken names', () => {
+  const empty = validateNewCompany({ name: '' });
+  assert.equal(empty.name, 'Enter the company name.');
+
+  const whitespace = validateNewCompany({ name: '   ' });
+  assert.equal(whitespace.name, 'Enter the company name.');
+
+  const tooLong = validateNewCompany({ name: 'a'.repeat(81) });
+  assert.equal(tooLong.name, 'Keep the name to 80 characters or fewer.');
+
+  const valid = validateNewCompany({ name: 'Valid Company' });
+  assert.equal(valid.name, undefined);
+
+  assert.equal(
+    companyErrorMessage({ code: 'COMPANY_NAME_TAKEN' }),
+    'Another company already uses that name.',
+  );
+  assert.equal(
+    companyErrorMessage({ code: 'COMPANY_NOT_FOUND' }),
+    'That company no longer exists.',
+  );
 });

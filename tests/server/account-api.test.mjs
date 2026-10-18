@@ -648,3 +648,52 @@ test('public company endpoint returns active company and rejects disabled or mis
     assert.equal(missing.body.code, 'COMPANY_NOT_FOUND');
   });
 });
+
+test('admin can create HR accounts and rename companies via CRUD endpoints', async () => {
+  await withApp(async (app) => {
+    await app.store.createAccount({
+      username: 'ADMIN-0001',
+      passwordHash: await app.hashing.hash('synthetic-admin-pass-1'),
+      role: 'admin',
+      mustChangePassword: false,
+      action: 'admin_created',
+      at: app.clock.now(),
+      companyId: null,
+    });
+    const admin = app.browser();
+    const login = await admin.signIn('ADMIN-0001', 'synthetic-admin-pass-1');
+    assert.equal(login.status, 200);
+
+    // 1. Create HR account for company
+    const hrRes = await admin.post('/api/admin/companies/univrse/hr-accounts', {});
+    assert.equal(hrRes.status, 201);
+    assert.match(hrRes.body.hrAccount.username, /^HR-[0-9]{4}$/);
+    assert.equal(hrRes.body.hrAccount.status, 'active');
+    assert.equal(hrRes.body.hrAccount.isDefault, true);
+    assert.ok(hrRes.body.temporaryPassword);
+    assert.equal(hrRes.body.company.defaultHr.username, hrRes.body.hrAccount.username);
+
+    // List HR accounts
+    const listHr = await admin.get('/api/admin/companies/univrse/hr-accounts');
+    assert.equal(listHr.status, 200);
+    assert.ok(listHr.body.hrAccounts.some((a) => a.username === hrRes.body.hrAccount.username));
+
+    // 2. Rename company (Update)
+    const renamed = await admin.patch('/api/admin/companies/univrse', {
+      name: 'UniVRse Global Tech',
+    });
+    assert.equal(renamed.status, 200);
+    assert.equal(renamed.body.company.name, 'UniVRse Global Tech');
+
+    // Verify company list reflects updated name (Read)
+    const companies = await admin.get('/api/admin/companies');
+    assert.equal(companies.status, 200);
+    const found = companies.body.companies.find((c) => c.id === 'univrse');
+    assert.equal(found.name, 'UniVRse Global Tech');
+
+    // Reject empty company name
+    const invalidRename = await admin.patch('/api/admin/companies/univrse', { name: '   ' });
+    assert.equal(invalidRename.status, 400);
+    assert.equal(invalidRename.body.code, 'COMPANY_INVALID');
+  });
+});
