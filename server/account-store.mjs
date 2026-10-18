@@ -644,11 +644,17 @@ export function createAccountStore({ pool, log = (line) => console.warn(line) })
       });
     },
     async employee(companyId, id) {
-      const found = await run(
-        'read employee',
-        `SELECT ${columns} FROM accounts WHERE id = $1 AND role = 'employee' AND company_id = $2`,
-        [id, scope(companyId)],
-      );
+      const found = companyId
+        ? await run(
+            'read employee',
+            `SELECT ${columns} FROM accounts WHERE id = $1 AND role = 'employee' AND company_id = $2`,
+            [id, scope(companyId)],
+          )
+        : await run(
+            'read employee',
+            `SELECT ${columns} FROM accounts WHERE id = $1 AND role = 'employee'`,
+            [id],
+          );
       return found.rows[0] || null;
     },
     async listEmployees(companyId, limit = 500) {
