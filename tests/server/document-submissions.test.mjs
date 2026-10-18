@@ -32,6 +32,7 @@ test('employee uploads, HR reviews, owner reads remarks, resubmits; other employ
     const item = created.body.submission;
     assert.equal(item.employeeId, owner.employee.account.username);
     assert.notEqual(item.employeeName, 'Spoofed');
+    assert.equal((await owner.browser.get(path)).body.available, true);
     assert.equal((await other.browser.get(path)).body.submissions.length, 0);
     for (const suffix of ['', '/file'])
       assert.equal((await other.browser.get(`${path}/${item.id}${suffix}`)).status, 404);
@@ -91,13 +92,15 @@ test('file validation rejects spoofed, empty, oversized, invalid and dangerous n
   );
 });
 
-test('unconfigured private storage never reports a successful upload', async () => {
+test('unconfigured private storage reports available: false and never reports a successful upload', async () => {
   const app = await startAccountsApp();
   try {
     const hr = await app.hrBrowser();
     const employee = await app.readyEmployee(hr);
+    const listing = await employee.browser.get(path);
+    assert.equal(listing.body.available, false);
+    assert.equal(listing.body.submissions.length, 0);
     assert.equal((await upload(employee.browser)).status, 503);
-    assert.equal((await employee.browser.get(path)).body.submissions.length, 0);
   } finally {
     await app.close();
   }

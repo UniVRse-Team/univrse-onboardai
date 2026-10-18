@@ -129,6 +129,7 @@ run "staging_names_carry_the_suffix" {
       google_iam_workload_identity_pool.github.workload_identity_pool_id == "onboardai-github-staging" &&
       google_iam_workload_identity_pool_provider.github.workload_identity_pool_provider_id == "github-actions-staging" &&
       google_storage_bucket.docs.name == "onboardai-test-123-onboardai-docs-staging" &&
+      google_storage_bucket.employee_docs.name == "onboardai-test-123-onboardai-employee-docs-staging" &&
       google_discovery_engine_data_store.docs.data_store_id == "onboardai-docs-staging" &&
       google_discovery_engine_search_engine.docs.engine_id == "onboardai-search-staging" &&
       google_discovery_engine_search_engine.docs.data_store_ids == tolist(["onboardai-docs-staging"]) &&
@@ -146,7 +147,8 @@ run "staging_names_carry_the_suffix" {
       length(google_iam_workload_identity_pool_provider.github.workload_identity_pool_provider_id) <= 32 &&
       length(google_iam_workload_identity_pool.github.display_name) <= 32 &&
       length(google_iam_workload_identity_pool_provider.github.display_name) <= 32 &&
-      length(google_storage_bucket.docs.name) <= 63
+      length(google_storage_bucket.docs.name) <= 63 &&
+      length(google_storage_bucket.employee_docs.name) <= 63
     )
     error_message = "A staging ID or display name exceeds its GCP length limit."
   }
@@ -155,7 +157,7 @@ run "staging_names_carry_the_suffix" {
     condition = alltrue([
       for labels in concat(
         [for s in google_cloud_run_v2_service.service : s.labels],
-        [google_artifact_registry_repository.onboardai.labels, google_storage_bucket.docs.labels, google_monitoring_alert_policy.server_errors.user_labels, google_monitoring_alert_policy.api_latency.user_labels, google_monitoring_alert_policy.uptime.user_labels],
+        [google_artifact_registry_repository.onboardai.labels, google_storage_bucket.docs.labels, google_storage_bucket.employee_docs.labels, google_monitoring_alert_policy.server_errors.user_labels, google_monitoring_alert_policy.api_latency.user_labels, google_monitoring_alert_policy.uptime.user_labels],
         [for c in google_monitoring_notification_channel.email : c.user_labels],
         [for c in google_monitoring_uptime_check_config.health : c.user_labels],
       ) : labels.environment == "staging" && labels.app == "onboardai" && labels["managed-by"] == "terraform"
@@ -181,6 +183,7 @@ run "staging_names_carry_the_suffix" {
       output.vertex_search_serving_config == "projects/123456789012/locations/global/collections/default_collection/engines/onboardai-search-staging/servingConfigs/default_search" &&
       output.firestore_database_id == "onboardai-staging" &&
       output.docs_bucket_name == "onboardai-test-123-onboardai-docs-staging" &&
+      output.employee_documents_bucket_name == "onboardai-test-123-onboardai-employee-docs-staging" &&
       output.docs_reconcile_run_command == "gcloud run jobs execute onboardai-docs-reconcile-staging --project=onboardai-test-123 --region=asia-southeast1 --wait"
     )
     error_message = "Staging outputs point at staging resources only."
@@ -480,9 +483,16 @@ run "staging_has_production_shape" {
       google_storage_bucket.docs.public_access_prevention == "enforced" &&
       google_storage_bucket.docs.versioning[0].enabled == true &&
       google_storage_bucket.docs.force_destroy == false &&
+      google_storage_bucket.employee_docs.uniform_bucket_level_access == true &&
+      google_storage_bucket.employee_docs.public_access_prevention == "enforced" &&
+      google_storage_bucket.employee_docs.versioning[0].enabled == true &&
+      google_storage_bucket.employee_docs.force_destroy == false &&
+      google_storage_bucket_iam_member.api_manages_employee_docs.bucket == "onboardai-test-123-onboardai-employee-docs-staging" &&
+      google_storage_bucket_iam_member.api_manages_employee_docs.role == "roles/storage.objectUser" &&
+      google_storage_bucket_iam_member.api_manages_employee_docs.member == "serviceAccount:onboardai-api-run-staging@onboardai-test-123.iam.gserviceaccount.com" &&
       length(google_artifact_registry_repository.onboardai.cleanup_policies) == 2
     )
-    error_message = "Staging bucket and repository keep production's protections and cleanup policies."
+    error_message = "Staging bucket and repository keep production's protections, cleanup policies and employee documents IAM."
   }
 }
 

@@ -57,6 +57,11 @@ output "docs_bucket_name" {
   value       = google_storage_bucket.docs.name
 }
 
+output "employee_documents_bucket_name" {
+  description = "Private bucket for employee document submissions (never attached to Vertex AI Search)."
+  value       = google_storage_bucket.employee_docs.name
+}
+
 output "vertex_search_data_store_id" {
   description = "Vertex AI Search data store ID (location global, collection default_collection)."
   value       = google_discovery_engine_data_store.docs.data_store_id
