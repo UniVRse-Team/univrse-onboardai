@@ -607,3 +607,65 @@ for (const store of chatStores)
       await service.close();
     }
   });
+
+for (const store of chatStores)
+  test(`${store.name}: company scope sets companyName in understand and answer system prompts`, async () => {
+    let understandSystemPrompt, answerSystemPrompt;
+    const fake = models();
+    fake.plan.invoke = async (messages) => {
+      understandSystemPrompt = messages[0].content;
+      return {
+        kind: 'company',
+        query: 'What does Seri Bayu Digital do?',
+        clarification: '',
+        category: 'onboarding',
+        topic: 'company overview',
+      };
+    };
+    fake.answer.invoke = async (messages) => {
+      answerSystemPrompt = messages[0].content;
+      return {
+        answer:
+          'Welcome to Seri Bayu Digital. We bring technology, creativity and practical problem-solving together.',
+        citations: [1],
+        coverage: 'full',
+      };
+    };
+    const service = createConversationService({
+      env: { GOOGLE_CLOUD_PROJECT: 'test-project' },
+      models: fake,
+      memory: store.create(),
+      retrieve: async () => [
+        {
+          title: 'Welcome to Seri Bayu Digital',
+          heading: 'Overview',
+          text: 'We bring technology, creativity and practical problem-solving together.',
+        },
+      ],
+    });
+    try {
+      const chat = await service.memory.create('employee-1');
+      const result = await service.ask(
+        'employee-1',
+        chat.id,
+        'What do we do?',
+        randomUUID(),
+        undefined,
+        null,
+        null,
+        { companyId: 'seri-bayu', companyName: 'Seri Bayu Digital' },
+      );
+      assert.match(understandSystemPrompt, /employee at Seri Bayu Digital/);
+      assert.match(understandSystemPrompt, /working at Seri Bayu Digital/);
+      assert.match(answerSystemPrompt, /assistant in OnboardAi for Seri Bayu Digital/);
+      assert.match(answerSystemPrompt, /The employee works at Seri Bayu Digital/);
+      assert.match(answerSystemPrompt, /always call it Seri Bayu Digital/);
+      assert.doesNotMatch(answerSystemPrompt, /UniVRse/);
+      assert.equal(
+        result.answer,
+        'Welcome to Seri Bayu Digital. We bring technology, creativity and practical problem-solving together.',
+      );
+    } finally {
+      await service.close();
+    }
+  });
