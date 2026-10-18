@@ -15,6 +15,7 @@ import {
   routeDecision,
   isAdminArea,
   parseCompanyTenantPath,
+  isHrArea,
 } from '../access/account-routing.mjs';
 import AdminPortal from '../admin/AdminPortal';
 import AdminSignIn from '../admin/AdminSignIn';
@@ -424,7 +425,7 @@ export default function OnboardingWebsite() {
         ? 'Welcome'
         : path === '/signup'
           ? 'Create an employee account'
-          : path === '/hr'
+          : isHrArea(path)
             ? 'HR workspace'
             : isAdminArea(path)
               ? 'Platform Admin'
@@ -497,7 +498,7 @@ export default function OnboardingWebsite() {
         tenantCompanyId={tenant?.companyId || null}
       />
     );
-  if (path === '/hr') return <HrWorkspace account={account} onSignOut={session.signOut} />;
+  if (isHrArea(path)) return <HrWorkspace account={account} onSignOut={session.signOut} />;
   if (isAdminArea(path)) {
     if (!account) {
       return (

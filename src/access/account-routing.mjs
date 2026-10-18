@@ -1,9 +1,17 @@
 // Which screen a signed-in or signed-out browser sees for a path.
 
-// An admin lands on the platform dashboard, HR on the workspace, and an
+// An admin lands on the platform dashboard, HR on their company workspace (/hr/:companyId), and an
 // employee on My onboarding (/onboarding).
+export const defaultCompanyId = 'univrse';
+export const hrCompanyPath = (companyId) =>
+  '/hr/' + encodeURIComponent(companyId || defaultCompanyId);
+
 export const landingPath = (account) =>
-  account?.role === 'admin' ? '/admin' : account?.role === 'hr' ? '/hr' : '/onboarding';
+  account?.role === 'admin'
+    ? '/admin'
+    : account?.role === 'hr'
+      ? hrCompanyPath(account?.companyId || account?.company?.id)
+      : '/onboarding';
 
 export const adminHome = '/admin';
 const companyPathPattern = /^\/admin\/companies\/([a-z][a-z0-9-]{1,30}[a-z0-9])\/?$/;
@@ -25,12 +33,21 @@ export function parseCompanyTenantPath(path) {
 }
 export const companyTenantPath = (companyId) => '/companies/' + encodeURIComponent(companyId);
 
+const hrPathPattern = /^\/hr\/([a-z][a-z0-9-]{1,30}[a-z0-9])\/?$/;
+export const isHrArea = (path) => path === '/hr' || String(path).startsWith('/hr/');
+// -> { companyId: string | null } | null (not an hr page)
+export function parseHrPath(path) {
+  if (path === '/hr' || path === '/hr/') return { companyId: null };
+  const match = hrPathPattern.exec(String(path));
+  return match ? { companyId: match[1] } : null;
+}
+
 const loginPaths = ['/', '/login'];
 
 // Every route needs an account. Signed-out visitors are sent to /login, which
 // is also the public landing page. accounts: true | false | null (null while
 // /api/config is loading). account: the SessionAccount, or null when signed out.
-// An HR account only uses /hr; an employee account never uses /hr.
+// An HR account only uses /hr/:companyId; an employee account never uses /hr.
 export function routeDecision({ accounts, loading = false, account = null, path }) {
   if (accounts === null || loading) return { type: 'loading' };
   if (accounts === false) {
@@ -57,8 +74,13 @@ export function routeDecision({ accounts, loading = false, account = null, path 
   if (account.role === 'admin')
     return parseAdminPath(path) ? { type: 'render' } : { type: 'redirect', to: adminHome };
   if (isAdminArea(path)) return { type: 'redirect', to: landing };
-  if (account.role === 'hr' && path !== '/hr') return { type: 'redirect', to: landing };
-  if (account.role !== 'hr' && path === '/hr') return { type: 'redirect', to: landing };
+  if (account.role === 'hr') {
+    const hr = parseHrPath(path);
+    const expected = account?.companyId || account?.company?.id || defaultCompanyId;
+    if (!hr || hr.companyId !== expected) return { type: 'redirect', to: landing };
+    return { type: 'render' };
+  }
+  if (isHrArea(path)) return { type: 'redirect', to: landing };
   return { type: 'render' };
 }
 

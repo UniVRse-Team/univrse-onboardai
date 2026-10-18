@@ -53,7 +53,11 @@ export async function startLocalPreview({
   app.use('/api', async (req, res, next) => {
     // Full-page preview links select the role independently for each tab.
     const path = req.headers.referer ? new URL(req.headers.referer).pathname : '/onboarding';
-    const browser = path.startsWith('/admin') ? admin : path === '/hr' ? hr : employee;
+    const browser = path.startsWith('/admin')
+      ? admin
+      : path === '/hr' || path.startsWith('/hr/')
+        ? hr
+        : employee;
     // Preview sessions are fixed; never invalidate them through login controls.
     if (req.path.startsWith('/auth/') && req.method !== 'GET')
       return res
@@ -99,7 +103,7 @@ export async function startLocalPreview({
         transformIndexHtml(html) {
           return html.replace(
             '</body>',
-            `<nav aria-label="Local development preview" style="position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#fff4ce;color:#241f10;padding:8px;text-align:center;font:13px sans-serif">Local preview · sample data · resets on restart &nbsp; <a href="/onboarding">Employee</a> · <a href="/hr">HR</a> · <a href="/admin">Admin</a> · <a href="/alya">Alya</a> · <a href="/profile">Profile</a></nav></body>`,
+            `<nav aria-label="Local development preview" style="position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#fff4ce;color:#241f10;padding:8px;text-align:center;font:13px sans-serif">Local preview · sample data · resets on restart &nbsp; <a href="/onboarding">Employee</a> · <a href="/hr/univrse">HR</a> · <a href="/admin">Admin</a> · <a href="/alya">Alya</a> · <a href="/profile">Profile</a></nav></body>`,
           );
         },
       },

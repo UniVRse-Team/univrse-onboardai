@@ -697,3 +697,15 @@ test('admin can create HR accounts and rename companies via CRUD endpoints', asy
     assert.equal(invalidRename.body.code, 'COMPANY_INVALID');
   });
 });
+
+test('HR reads company and profile details from /api/hr/company', async () => {
+  await withApp(async (app) => {
+    const hr = await app.hrBrowser();
+    const response = await hr.get('/api/hr/company');
+    assert.equal(response.status, 200);
+    assert.equal(response.body.company.id, 'univrse');
+    assert.equal(response.body.company.name, 'UniVRse');
+    assert.equal(response.body.company.status, 'active');
+    assert.ok(response.body.profile);
+  });
+});

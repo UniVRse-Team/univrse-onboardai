@@ -41,12 +41,13 @@
 .hr-screen-header nav button {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   min-height: 40px;
-  padding: 9px 18px;
+  padding: 8px 14px;
   color: #dfebf1;
   font-size: 13px;
   border-radius: 6px;
+  white-space: nowrap;
 }
 .hr-screen-header nav button[aria-pressed='true'] {
   background: #e3f3f4;
@@ -222,6 +223,25 @@
   }
   .hr-screen-heading h1 {
     font-size: 28px;
+  }
+}
+@media (max-width: 1440px) {
+  .hr-preview-page.hr-screen .hr-screen-header {
+    gap: 16px;
+    padding-inline: 18px;
+  }
+  .hr-screen-header nav {
+    gap: 3px;
+    padding: 3px;
+  }
+  .hr-screen-header nav button {
+    font-size: 12px;
+    min-height: 38px;
+    padding: 7px 10px;
+    gap: 6px;
+  }
+  .hr-preview-page.hr-screen .hr-screen-header .account-session {
+    gap: 10px;
   }
 }
 @media (max-width: 1150px) {
