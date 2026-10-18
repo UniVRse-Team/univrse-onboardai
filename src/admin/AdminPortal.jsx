@@ -35,11 +35,7 @@ export default function AdminPortal({ account, path, navigate, onSignOut }) {
 
       <main className="admin-main">
         {parsed?.page === 'company' ? (
-          <AdminCompanyDetail
-            key={parsed.companyId}
-            companyId={parsed.companyId}
-            navigate={navigate}
-          />
+          <AdminCompanyDetail companyId={parsed.companyId} navigate={navigate} />
         ) : (
           <AdminDashboard navigate={navigate} />
         )}

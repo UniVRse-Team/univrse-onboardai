@@ -7,7 +7,6 @@ import {
 } from './account-errors.mjs';
 import {
   accountCookie,
-  adminCookie,
   accountCookieOptions,
   readCookie,
   sameOrigin,
@@ -16,10 +15,7 @@ import {
 import { ChatError } from './chat-errors.mjs';
 
 export function mountAdminRoutes(app, { env, accounts, profileDigest = null }) {
-  const clearSession = (req, res) => {
-    res.clearCookie(adminCookie, accountCookieOptions(req, env));
-    res.clearCookie(accountCookie, accountCookieOptions(req, env));
-  };
+  const clearSession = (req, res) => res.clearCookie(accountCookie, accountCookieOptions(req, env));
 
   function guard(req, res, next) {
     res.set('Cache-Control', 'no-store');
@@ -29,7 +25,7 @@ export function mountAdminRoutes(app, { env, accounts, profileDigest = null }) {
   }
 
   const adminOnly = async (req, res, next) => {
-    const token = readCookie(req, adminCookie) || readCookie(req, accountCookie);
+    const token = readCookie(req, accountCookie);
     if (token === undefined) throw accountErrors.authRequired();
     const session = await accounts.session(token);
     if (!session) {
