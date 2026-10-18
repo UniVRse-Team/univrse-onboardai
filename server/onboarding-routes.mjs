@@ -131,7 +131,7 @@ export function mountOnboardingRoutes({
   });
   hr.get('/employees/:id/onboarding', hrOnly, async (req, res) => {
     if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);
-    res.json(await journey.employeeOnboarding(req.params.id));
+    res.json(await journey.employeeOnboarding(req.params.id, req.accountSession));
   });
   hr.get('/employees/:id/ai-proficiency', hrOnly, async (req, res) => {
     if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);
@@ -145,7 +145,7 @@ export function mountOnboardingRoutes({
   });
   hr.get('/employees/:id/first-day', hrOnly, async (req, res) => {
     if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);
-    res.json(await journey.employeeFirstDay(req.params.id));
+    res.json(await journey.employeeFirstDay(req.params.id, req.accountSession));
   });
   hr.put('/employees/:id/first-day', hrOnly, async (req, res) => {
     if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);

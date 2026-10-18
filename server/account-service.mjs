@@ -286,7 +286,7 @@ export function createAccountService({
 
   async function getEmployee(actorOrId, maybeId) {
     const [actor, id] = maybeId !== undefined ? [actorOrId, maybeId] : [null, actorOrId];
-    const companyId = resolveCompanyScope(actor);
+    const companyId = actor ? resolveCompanyScope(actor) : null;
     const row = await employeeOrThrow(companyId, id);
     return { account: accountView(row, now()), profile: await profiles.read(row.id) };
   }
