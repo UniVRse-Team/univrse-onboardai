@@ -54,7 +54,7 @@ export default function AdminSignIn({ onSignIn, onSignOut, navigate }) {
 
       <main className="admin-main admin-signin-container">
         <div className="admin-card admin-signin-card">
-          <div className="admin-card-header">
+          <div className="admin-card-header admin-signin-header">
             <span className="admin-kicker">SYSTEM ADMINISTRATION</span>
             <h2>Platform Administrator Sign In</h2>
             <p>
