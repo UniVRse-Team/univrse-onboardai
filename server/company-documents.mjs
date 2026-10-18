@@ -436,6 +436,7 @@ export const companyDocumentSummaryFields = Object.freeze([
   'version',
   'connectedAt',
   'retiredAt',
+  'companyId',
 ]);
 // A summary from an entry's ID and (selected) data.
 export function companyDocumentSummary(id, data = {}) {
