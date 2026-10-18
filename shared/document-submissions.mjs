@@ -8,7 +8,7 @@ export const documentTypes = [
   'Other',
 ];
 export const reviewStatuses = ['Pending Review', 'Under Review', 'Approved', 'Rejected'];
-export const maxFileBytes = 5 * 1024 * 1024;
+export const maxFileBytes = 25 * 1024 * 1024;
 export const fileTypes = {
   pdf: 'application/pdf',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -23,7 +23,7 @@ export const fileSize = (bytes) =>
     : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 export function fileProblem(file) {
   if (!file || !file.size) return 'Choose a non-empty file.';
-  if (file.size > maxFileBytes) return 'Your file exceeds 5 MB. Choose a smaller file.';
+  if (file.size > maxFileBytes) return 'Your file exceeds 25 MB. Choose a smaller file.';
   if (!fileTypes[fileExtension(file.name)]) return 'Choose a PDF, DOCX, JPG or PNG file.';
   return '';
 }

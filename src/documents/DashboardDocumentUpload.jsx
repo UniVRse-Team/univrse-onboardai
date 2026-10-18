@@ -214,7 +214,7 @@ export default function DashboardDocumentUpload({
                 }}
               />
             </label>
-            <small>PDF, DOCX, JPG or PNG · Up to 5 MB per file</small>
+            <small>PDF, DOCX, JPG or PNG · Up to 25 MB per file</small>
             {file && (
               <div className="fp-selected-file">
                 <strong>{file.name}</strong>
