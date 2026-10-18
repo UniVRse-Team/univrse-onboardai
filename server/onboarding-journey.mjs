@@ -714,12 +714,12 @@ export function createOnboardingJourney({
   }
 
   // --- HR -----------------------------------------------------------------------
-  async function employeeTrack(id) {
-    const { profile } = await accounts.getEmployee(id);
+  async function employeeTrack(id, actor = null) {
+    const { profile } = await accounts.getEmployee(actor, id);
     return { track: trackOf(profile), startDate: profile?.job.startDate || null };
   }
-  async function employeeOnboarding(id) {
-    const { track } = await employeeTrack(id);
+  async function employeeOnboarding(id, actor = null) {
+    const { track } = await employeeTrack(id, actor);
     await reconcileDocuments(id, track);
     return (await onboardingOf(id, track)).onboarding;
   }
@@ -728,7 +728,7 @@ export function createOnboardingJourney({
     if (query?.companyId && String(query.companyId) !== actorCompany) {
       throw journeyErrors.aiProficiencyForbidden();
     }
-    await accounts.getEmployee(id);
+    await accounts.getEmployee(actor, id);
     const progress = await readProgress(id);
     return {
       aiProficiency: presentAiProficiency(
@@ -748,7 +748,7 @@ export function createOnboardingJourney({
       !['done', 'todo'].includes(status)
     )
       throw journeyErrors.stepStatusInvalid();
-    const { track } = await employeeTrack(id);
+    const { track } = await employeeTrack(id, actor);
     const found = findStep(await template(track), stepId);
     if (!found) throw journeyErrors.stepNotFound();
     if (found.step.completion !== 'hr_verify') throw journeyErrors.stepNotHrVerified();
@@ -773,13 +773,13 @@ export function createOnboardingJourney({
       { stepId, status },
     );
   }
-  async function employeeFirstDay(id) {
-    const { startDate } = await employeeTrack(id);
+  async function employeeFirstDay(id, actor = null) {
+    const { startDate } = await employeeTrack(id, actor);
     return { firstDay: presentFirstDay(await readFirstDay(id)), startDate };
   }
   async function putEmployeeFirstDay(actor, id, body) {
     const value = validateFirstDay(body);
-    await accounts.getEmployee(id);
+    await accounts.getEmployee(actor, id);
     const stored = { ...value, updatedAt: now().toISOString(), updatedBy: actor.account.id };
     await accounts.recordEmployeeChange(actor, id, 'first_day_updated', () =>
       guarded('save first-day details', async () => {
@@ -853,7 +853,7 @@ export function createOnboardingJourney({
       markPassed(account, (await employeeFacts(account)).track, stepId),
     // An authorised coordinator confirms an employee's tool access.
     verifyEmployeeStep: async (actor, id, stepId) => {
-      const { track } = await employeeTrack(id);
+      const { track } = await employeeTrack(id, actor);
       if (!findStep(await template(track), stepId)) throw journeyErrors.stepNotFound();
       return accounts.recordEmployeeChange(
         actor,

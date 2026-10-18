@@ -13,7 +13,7 @@ import {
 // These dependencies are excluded from the production Docker image.
 export async function startLocalPreview({
   env = process.env,
-  port = Number(env.PREVIEW_PORT) || 3000,
+  port = Number(env.PREVIEW_PORT) || Number(env.PORT) || 3100,
 } = {}) {
   assertLocalPreview(env);
   const { startAccountsApp, syntheticProfile } =
@@ -32,6 +32,19 @@ export async function startLocalPreview({
   const { browser: employee } = await fixture.readyEmployee(hr, {
     profile: syntheticProfile('Local Preview Employee', 'Product & Engineering'),
   });
+  const adminId = '11111111-2222-4333-8444-555555555555';
+  await fixture.store.createAccount({
+    id: adminId,
+    username: 'ADMIN-0001',
+    role: 'admin',
+    passwordHash: await fixture.hashing.hash('admin-pass-1'),
+    mustChangePassword: false,
+    action: 'admin_created',
+    at: fixture.clock.now(),
+    companyId: null,
+  });
+  const admin = fixture.browser();
+  await admin.signIn('ADMIN-0001', 'admin-pass-1');
   const { seedPreviewSubmissions } = await import('./seed-preview-submissions.mjs');
   await seedPreviewSubmissions(fixture, hr, employee);
   const app = express();
@@ -43,7 +56,11 @@ export async function startLocalPreview({
   app.use('/api', async (req, res, next) => {
     // Full-page preview links select the role independently for each tab.
     const path = req.headers.referer ? new URL(req.headers.referer).pathname : '/onboarding';
-    const browser = path === '/hr' ? hr : employee;
+    const browser = path.startsWith('/admin')
+      ? admin
+      : path === '/hr' || path.startsWith('/hr/')
+        ? hr
+        : employee;
     // Preview sessions are fixed; never invalidate them through login controls.
     if (req.path.startsWith('/auth/') && req.method !== 'GET')
       return res
@@ -89,7 +106,7 @@ export async function startLocalPreview({
         transformIndexHtml(html) {
           return html.replace(
             '</body>',
-            `<nav aria-label="Local development preview" style="position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#fff4ce;color:#241f10;padding:8px;text-align:center;font:13px sans-serif">Local preview · sample data · resets on restart &nbsp; <a href="/onboarding">Employee</a> · <a href="/hr">HR</a> · <a href="/alya">Alya</a> · <a href="/profile">Profile</a></nav></body>`,
+            `<nav aria-label="Local development preview" style="position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#fff4ce;color:#241f10;padding:8px;text-align:center;font:13px sans-serif">Local preview · sample data · resets on restart &nbsp; <a href="/onboarding">Employee</a> · <a href="/hr/univrse">HR</a> · <a href="/admin">Admin</a> · <a href="/alya">Alya</a> · <a href="/profile">Profile</a></nav></body>`,
           );
         },
       },
@@ -116,7 +133,7 @@ export async function startLocalPreview({
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const preview = await startLocalPreview();
+  const preview = await startLocalPreview({ port: Number(process.env.PORT) || 3100 });
   console.log(
     `Local development preview: ${preview.url} (temporary sample accounts; no real databases)`,
   );

@@ -25,18 +25,27 @@ from .store import ChecklistStore
 
 ACCOUNT_KEY = "onboardai_account_id"
 TRACK_KEY = "onboardai_track"
+TEMPLATE_KEY = "onboardai_template_id"
 TRACKS = ("employee", "intern", "contractor")
 _ACCOUNT = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+_TEMPLATE = re.compile(r"^(?:starter\.)?(?:employee|intern|contractor)$")
 
 
 def identity(tool_context: ToolContext) -> tuple[str | None, str]:
-    """(account id, track) from the session state; (None, ...) when unusable."""
+    """(account id, template_id) from the session state; (None, ...) when unusable."""
     state = tool_context.state
     account = state.get(ACCOUNT_KEY)
     track = state.get(TRACK_KEY)
+    template_id = state.get(TEMPLATE_KEY)
     if not isinstance(account, str) or not _ACCOUNT.fullmatch(account):
         account = None
-    return account, track if track in TRACKS else "employee"
+    if isinstance(template_id, str) and _TEMPLATE.fullmatch(template_id):
+        resolved_template = template_id
+    elif track in TRACKS:
+        resolved_template = track
+    else:
+        resolved_template = "employee"
+    return account, resolved_template
 
 
 UNAVAILABLE = {"error": "The onboarding checklist is unavailable right now."}

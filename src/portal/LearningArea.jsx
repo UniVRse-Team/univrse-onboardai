@@ -9,7 +9,13 @@ import {
   VerificationGuide,
 } from './LearningActivities';
 import { saveHandoff, stepAskHandoff } from '../access/support-flow.mjs';
-import { RESPONSIBILITIES_ACTIVITY, activityPath } from './activity-model.mjs';
+import {
+  RESPONSIBILITIES_ACTIVITY,
+  activityPath,
+  hasAlignmentActivity,
+  hasPolicyActivity,
+  hasResponsibilitiesActivity,
+} from './activity-model.mjs';
 import {
   learningSummary,
   primaryAction,
@@ -38,7 +44,18 @@ function LearningTask({
   const ai = step.id === 'role-tools.ai-readiness-training';
   const accessSteps = content?.toolAccessSteps || [];
   const access = areaId === 'role-tools' && accessSteps.includes(step.id);
-  const verified = areaId === 'policies' || areaId === 'alignment';
+  // Policies and alignment steps are quizzes only when the served handbook holds
+  // that activity. A starter company's handbook is empty, so its steps are plain
+  // tasks that follow their own completion ('self' confirms, 'hr_verify' waits).
+  const hasActivity =
+    areaId === 'policies'
+      ? hasPolicyActivity(step.id, content)
+      : areaId === 'alignment'
+        ? hasAlignmentActivity(step.id, content)
+        : false;
+  const verified = (areaId === 'policies' || areaId === 'alignment') && (hasActivity || !content);
+  const guideArea =
+    (areaId === 'policies' || areaId === 'alignment') && !verified ? 'plain' : areaId;
   const tool = records?.roleTools?.tools?.[step.id];
   const slug = step.id.replace('alignment.', '');
   const policyRecord = records?.policies?.[step.id];
@@ -55,10 +72,11 @@ function LearningTask({
   const shown = started && !step.briefed ? { ...step, briefed: true } : step;
   // Without the served content we cannot tell an access step from a plain setup
   // step, so no button is offered rather than a wrong one.
-  const unknownKind = areaId === 'role-tools' && !content && !ai;
+  const unknownKind =
+    (areaId === 'role-tools' || areaId === 'policies' || areaId === 'alignment') && !content && !ai;
   const primary = unknownKind
     ? null
-    : primaryAction(shown, areaId, {
+    : primaryAction(shown, guideArea, {
         accessStepIds: accessSteps,
         hasQuiz: Boolean(content?.policies?.[step.id]?.quiz),
         acknowledged: Boolean(policyRecord?.acknowledgedAt),
@@ -109,7 +127,7 @@ function LearningTask({
       </summary>
       <div className="learning-task-body">
         <p>{descriptionText(step)}</p>
-        <VerificationGuide step={step} areaId={areaId} accessStepIds={accessSteps} />
+        <VerificationGuide step={step} areaId={guideArea} accessStepIds={accessSteps} />
         {step.briefing && (
           <section className="learning-resource">
             <h4>Read the essentials</h4>
@@ -329,7 +347,7 @@ export default function LearningArea({ area, onUpdated, firstDay, expanded, navi
               Loading activities…
             </p>
           )}
-        {area.id === 'role-tools' && content && (
+        {area.id === 'role-tools' && hasResponsibilitiesActivity(content) && (
           <ActivityLauncher
             id={'learning-' + RESPONSIBILITIES_ACTIVITY}
             title="Roles & Responsibilities"

@@ -13,6 +13,7 @@ import { createFirestoreChatMemory } from '../../server/firestore-chat-memory.mj
 import { createConversationService } from '../../server/gemini-chat-workflow.mjs';
 import { hashPassword, verifyPassword } from '../../server/password-hashing.mjs';
 import { builtInTemplate } from '../../server/onboarding-content.mjs';
+import { DEFAULT_COMPANY_ID } from '../../server/companies.mjs';
 import { FakeFirestore } from './fake-firestore.mjs';
 import { createTestDatabase } from './test-database.mjs';
 
@@ -274,6 +275,7 @@ export async function startAccountsApp({
       mustChangePassword: false,
       action: 'hr_account_created',
       at: clock.now(),
+      companyId: DEFAULT_COMPANY_ID,
     });
   }
   return {

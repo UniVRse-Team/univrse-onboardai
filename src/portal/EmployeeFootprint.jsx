@@ -258,7 +258,11 @@ export default function EmployeeFootprint({ navigate, chatPath, account, expande
     <section className="fp" aria-labelledby="fp-title">
       <header className="fp-hero">
         <div>
-          <span className="uv-eyebrow">YOUR ONBOARDING FOOTPRINT</span>
+          <span className="uv-eyebrow">
+            {account?.company?.name
+              ? `${account.company.name.toUpperCase()} ONBOARDING FOOTPRINT`
+              : 'YOUR ONBOARDING FOOTPRINT'}
+          </span>
           <h1 id="fp-title" tabIndex={-1} ref={headingRef}>
             {onboarding.complete ? 'Onboarding complete.' : 'One step at a time.'}
           </h1>

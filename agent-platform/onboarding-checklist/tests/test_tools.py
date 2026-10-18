@@ -326,3 +326,27 @@ def test_ai_readiness_training_step_syncs_with_ai_proficiency():
     assert progress["aiProficiency"]["learningPathId"] == "intermediate"
     assert progress["aiProficiency"]["level"] == 5
 
+
+def test_template_id_from_session_state():
+    from onboarding_checklist.tools import TEMPLATE_KEY
+
+    db, get_progress, _mark = tools(
+        {
+            "onboardingTemplates/starter.employee": TEMPLATE,
+            f"onboardingProgress/{ACCOUNT}": {
+                "accountId": ACCOUNT,
+                "steps": {},
+            },
+        }
+    )
+    ctx = SimpleNamespace(
+        state={ACCOUNT_KEY: ACCOUNT, TRACK_KEY: "employee", TEMPLATE_KEY: "starter.employee"}
+    )
+    result = get_progress.func(tool_context=ctx)
+    assert result != UNAVAILABLE
+    assert [path for path, _tx in db.reads] == [
+        "onboardingTemplates/starter.employee",
+        f"onboardingProgress/{ACCOUNT}",
+    ]
+
+

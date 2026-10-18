@@ -135,6 +135,8 @@ test('HR uploads PDF, DOCX, text and Markdown files; only text and metadata are 
         connectedAt: 'iso',
         status: 'active',
         version: 1,
+        companyId: 'univrse',
+        objectName: `${ids[1]}/handbook.docx`,
       },
     );
     assert.equal('text' in stored, false);
@@ -688,9 +690,19 @@ test('HR uploads and deletes sync directly to GCS and trigger Vertex AI Search d
         'https://discoveryengine.googleapis.com/v1/projects/demo-test/locations/global/collections/default_collection/dataStores/onboardai-docs/branches/default_branch/documents:import',
       );
       assert.deepEqual(JSON.parse(calls[1].body), {
-        gcsSource: {
-          inputUris: [`gs://demo-test-onboardai-docs/${id}/Employee Handbook.txt`],
-          dataSchema: 'content',
+        inlineSource: {
+          documents: [
+            {
+              id,
+              content: {
+                uri: `gs://demo-test-onboardai-docs/${id}/Employee Handbook.txt`,
+                mimeType: 'text/plain; charset=utf-8',
+              },
+              structData: {
+                companyId: 'univrse',
+              },
+            },
+          ],
         },
         reconciliationMode: 'INCREMENTAL',
       });

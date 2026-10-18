@@ -149,11 +149,12 @@ locals {
   # ---------------------------------------------------------------------------
   # Vertex AI Search, Firestore and the documents bucket (contract v2).
   # ---------------------------------------------------------------------------
-  search_location      = "global"
-  search_collection_id = "default_collection" # the only collection data stores are created in
-  data_store_id        = "onboardai-docs${local.name_suffix}"
-  search_engine_id     = "onboardai-search${local.name_suffix}"
-  docs_bucket_name     = "${var.project_id}-onboardai-docs${local.name_suffix}"
+  search_location                = "global"
+  search_collection_id           = "default_collection" # the only collection data stores are created in
+  data_store_id                  = "onboardai-docs${local.name_suffix}"
+  search_engine_id               = "onboardai-search${local.name_suffix}"
+  docs_bucket_name               = "${var.project_id}-onboardai-docs${local.name_suffix}"
+  employee_documents_bucket_name = "${var.project_id}-onboardai-employee-docs${local.name_suffix}"
 
   # Service agent that Discovery Engine reads Cloud Storage imports as.
   discovery_engine_service_agent = "service-${data.google_project.this.number}@gcp-sa-discoveryengine.iam.gserviceaccount.com"

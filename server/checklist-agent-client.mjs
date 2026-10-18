@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { DEFAULT_COMPANY_ID, templateDocId } from './companies.mjs';
 
 // The one place that calls the onboarding checklist agent (#51; Python, Google
 // ADK, agent-platform/onboarding-checklist). The api only knows
@@ -92,9 +93,10 @@ export class ChecklistAgentError extends Error {
 
 export const agentUserId = (accountId) => `employee-${accountId}`;
 const newSessionId = () => `checklist-${randomUUID()}`;
-export const sessionState = (accountId, track) => ({
+export const sessionState = (accountId, track, companyId = DEFAULT_COMPANY_ID) => ({
   onboardai_account_id: accountId,
   onboardai_track: track,
+  onboardai_template_id: templateDocId(companyId, track),
 });
 
 // Agent events arrive camelCase from the ADK API server and snake_case from
@@ -230,7 +232,7 @@ export function createAdkChecklistAgent({
   }
   return {
     kind: 'adk',
-    async start({ accountId, track, text, signal }) {
+    async start({ accountId, track, text, signal, companyId = DEFAULT_COMPANY_ID }) {
       const userId = agentUserId(accountId),
         sessionId = newSessionId();
       await send(
@@ -240,7 +242,7 @@ export function createAdkChecklistAgent({
           method: 'POST',
           headers: json,
           signal: withDeadline(signal),
-          body: JSON.stringify({ sessionId, state: sessionState(accountId, track) }),
+          body: JSON.stringify({ sessionId, state: sessionState(accountId, track, companyId) }),
         },
         'SESSION',
       );
@@ -343,7 +345,7 @@ export function createAgentEngineChecklistAgent({
   }
   return {
     kind: 'agent-engine',
-    async start({ accountId, track, text, signal }) {
+    async start({ accountId, track, text, signal, companyId = DEFAULT_COMPANY_ID }) {
       const userId = agentUserId(accountId);
       let sessionId = newSessionId();
       try {
@@ -353,7 +355,7 @@ export function createAgentEngineChecklistAgent({
           {
             user_id: userId,
             session_id: sessionId,
-            state: sessionState(accountId, track),
+            state: sessionState(accountId, track, companyId),
             ttl: AGENT_ENGINE_SESSION_TTL,
           },
           'SESSION',

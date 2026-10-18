@@ -216,6 +216,77 @@ GiB-month in `asia-southeast1` (the metric
 `firestore.googleapis.com/storage/pitr_storage_bytes` shows its size): cents a
 month for a database of a few hundred MiB. Staging has it off.
 
+## Company filter schema (#86, one-time, not Terraform)
+
+Vertex AI Search results are filtered by company: every document carries
+`structData.companyId` and every search sends
+`filter: 'companyId: ANY("<id>")'`. A filter on a field the data store's
+`default_schema` does not declare as indexable is rejected, so each data store
+needs this schema field before the code that sends the filter is deployed
+(staging `onboardai-docs-staging`, then production `onboardai-docs`).
+
+Terraform does not manage it, on purpose. `google_discovery_engine_schema`
+exists in the pinned google provider (8.6.0) and can import `default_schema`,
+but its `json_schema` argument is `ForceNew`, its update is a no-op, and its
+destroy sends `DELETE .../schemas/default_schema`. Adopting the schema and then
+adding `companyId` would plan as destroy-and-recreate: it deletes the schema
+(the API refuses while the data store holds documents) and then tries to POST
+a new one. Even `lifecycle { prevent_destroy = true }` only turns that plan into
+an error, so the field could still not be added. The data store resource has no
+schema argument (`skip_default_schema_creation` only skips creating it). The API
+call below (`schemas.patch`) updates the schema in place. `tests/company_schema.tftest.hcl`
+fails if a `google_discovery_engine_schema` resource is added, and checks that this
+section keeps the JSON the backend relies on.
+
+The caller needs `discoveryengine.schemas.get` and `.update`: Owner, or
+`roles/discoveryengine.editor` (which the api already holds on the project;
+use your own account, not the api service account). The call is idempotent and
+safe to repeat.
+
+Updating the schema re-indexes every document in the data store (Google, "Update a
+schema": "Updating a schema triggers re-indexing of all documents ... Reindexing can
+incur costs, depending on the parser"; the layout parser is billed). Search keeps
+working but can be slow while it runs. Do it once per data store, before the
+backfill. A schema update must be backward compatible: fields cannot be removed or
+change type, so the step below keeps whatever the schema already holds.
+
+```bash
+PROJECT_ID=<project id>
+DS=onboardai-docs-staging            # production: onboardai-docs
+URL="https://discoveryengine.googleapis.com/v1/projects/$PROJECT_ID/locations/global/collections/default_collection/dataStores/$DS/schemas/default_schema"
+AUTH=(-H "Authorization: Bearer $(gcloud auth print-access-token)" -H "X-Goog-User-Project: $PROJECT_ID")
+
+# 1. Read the current schema (keep it, only add companyId).
+curl -sS "${AUTH[@]}" "$URL" > /tmp/default_schema.current.json
+
+# 2. Add companyId to it (existing properties stay).
+jq '{structSchema: (
+      (if .structSchema then .structSchema
+       elif .jsonSchema then (.jsonSchema | fromjson)
+       else {"$schema":"https://json-schema.org/draft-07/schema#","type":"object"} end)
+      | .properties = ((.properties // {}) + {companyId: {type:"string", indexable:true, retrievable:true, searchable:false, dynamicFacetable:false}}))}' \
+  /tmp/default_schema.current.json > /tmp/default_schema.patch.json
+
+# 3. Patch it. The response is a long-running operation.
+curl -sS -X PATCH "${AUTH[@]}" -H "Content-Type: application/json" "$URL" -d @/tmp/default_schema.patch.json
+
+# 4. Check: companyId is present with indexable and retrievable true.
+curl -sS "${AUTH[@]}" "$URL" | jq '(.structSchema // (.jsonSchema | fromjson)).properties.companyId'
+```
+
+On a data store whose schema is empty the result is exactly:
+
+`{"$schema":"https://json-schema.org/draft-07/schema#","type":"object","properties":{"companyId":{"type":"string","indexable":true,"retrievable":true,"searchable":false,"dynamicFacetable":false}}}`
+
+Poll the operation (`GET https://discoveryengine.googleapis.com/v1/<operation name>`)
+until `done` is true. Rollback is not needed: an extra declared field does no harm
+and cannot be removed.
+
+For the api's role (#80 narrows `roles/discoveryengine.editor` to a custom role): it
+must keep `discoveryengine.documents.import`, `.delete` and `.list`, plus
+`discoveryengine.servingConfigs.search` (or the engine-level viewer grant).
+It needs no `schemas.*` permission.
+
 ## Alerts
 
 Cloud Monitoring emails every address in `alert_emails` (one email channel

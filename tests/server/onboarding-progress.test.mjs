@@ -117,7 +117,10 @@ test('every built-in template is valid: the user’s areas, their required step 
       ],
     );
     for (const step of template.areas.flatMap((a) => a.steps).filter((s) => s.check)) {
-      assert.ok([handbookTitle, roleToolsTitle].includes(step.check.sourceTitle), step.id);
+      assert.ok(
+        [handbookTitle, roleToolsTitle, peopleSupportTitle].includes(step.check.sourceTitle),
+        step.id,
+      );
       if (step.check.type === 'choice')
         assert.ok(step.check.options.some((o) => o.id === step.check.correctOptionId));
       else {

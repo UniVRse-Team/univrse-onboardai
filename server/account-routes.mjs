@@ -1,7 +1,7 @@
 import express from 'express';
 import { mountDocumentSubmissionRoutes } from './document-submission-routes.mjs';
 import { ChatError } from './chat-errors.mjs';
-import { accountErrors, autofillErrors } from './account-errors.mjs';
+import { accountErrors, autofillErrors, companyErrors } from './account-errors.mjs';
 import { companyKnowledgeRequestErrors } from './company-knowledge.mjs';
 import { readUploadedDocument } from './read-uploaded-document.mjs';
 import { workspaceLimits } from './workspace-limits.mjs';
@@ -103,6 +103,8 @@ export function mountAccountRoutes(
       }
       if (session.account.mustChangePassword && !allowPasswordChange)
         throw accountErrors.passwordChangeRequired();
+      if (session.account.role === 'admin' && role !== 'admin')
+        throw accountErrors.companyAccountRequired();
       if (role && session.account.role !== role)
         throw role === 'hr' ? accountErrors.hrRequired() : accountErrors.employeeRequired();
       req.accountSession = session;
@@ -138,6 +140,11 @@ export function mountAccountRoutes(
     setSession(req, res, result);
     res.json({ account: result.account });
   });
+  auth.get('/companies/:companyId', async (req, res) => {
+    const { company } = await accounts.getCompany(req.params.companyId);
+    if (company.status === 'disabled') throw companyErrors.disabled();
+    res.json({ company: { id: company.id, name: company.name, status: company.status } });
+  });
 
   const me = express.Router();
   me.get('/profile', signedIn(), async (req, res) => {
@@ -145,6 +152,17 @@ export function mountAccountRoutes(
   });
 
   const employees = express.Router();
+  // Read-only company and profile details for HR.
+  employees.get('/company', hr, async (req, res) => {
+    const companyId = req.accountSession.account.companyId;
+    const { company } = await accounts.getCompany(companyId);
+    const profileEnvelope = await accounts.companyProfile(companyId);
+    res.json({
+      company: { id: company.id, name: company.name, status: company.status },
+      defaultHr: company.defaultHr,
+      ...profileEnvelope,
+    });
+  });
   // Reads profile fields from an uploaded document; saves nothing.
   employees.post('/employees/autofill', hr, async (req, res) => {
     if (!profileAutofill) throw autofillErrors.notConfigured();
@@ -152,7 +170,7 @@ export function mountAccountRoutes(
   });
   // Each item: { account, profile, track, onboarding: { percent, waitingOnHr } }.
   employees.get('/employees', hr, async (req, res) => {
-    const listed = await accounts.listEmployees();
+    const listed = await accounts.listEmployees(req.accountSession);
     res.json({ employees: journey ? await journey.onboarding.withOnboarding(listed) : listed });
   });
   // { profile } in; { employee, temporaryPassword } out. The server assigns the
@@ -162,7 +180,7 @@ export function mountAccountRoutes(
     res.status(201).json(await accounts.createEmployee(req.accountSession, req.body));
   });
   employees.get('/employees/:id', hr, async (req, res) => {
-    res.json({ employee: await accounts.getEmployee(req.params.id) });
+    res.json({ employee: await accounts.getEmployee(req.accountSession, req.params.id) });
   });
   employees.put('/employees/:id/profile', hr, async (req, res) => {
     res.json({
@@ -177,7 +195,7 @@ export function mountAccountRoutes(
   });
   // Deletes the employee's Firestore data, then the account. Safe to retry.
   employees.delete('/employees/:id', hr, async (req, res) => {
-    await accounts.getEmployee(req.params.id);
+    await accounts.getEmployee(req.accountSession, req.params.id);
     await submissions?.eraseEmployee(req.params.id);
     await accounts.deleteEmployee(req.accountSession, req.params.id, {
       eraseChats: (owner) => chatMemory().eraseOwner(owner),
@@ -191,7 +209,7 @@ export function mountAccountRoutes(
 
   // HR Settings: the departments and their Employee ID prefixes.
   employees.get('/departments', hr, async (req, res) => {
-    res.json({ departments: await accounts.listDepartments() });
+    res.json({ departments: await accounts.listDepartments(req.accountSession) });
   });
   employees.post('/departments', hr, async (req, res) => {
     res.status(201).json(await accounts.createDepartment(req.accountSession, req.body));
@@ -206,7 +224,7 @@ export function mountAccountRoutes(
     return companyKnowledge;
   };
   employees.get('/company-knowledge', hr, async (req, res) => {
-    res.json(await library().snapshot());
+    res.json(await library().snapshot(req.accountSession.account.companyId));
   });
   // A raw file body (application/octet-stream, X-File-Name), read into text
   // with the shared upload reader. Only the text and metadata are stored.
@@ -239,6 +257,7 @@ export function mountAccountRoutes(
       const file = await readUploadedDocument(name, req.body);
       if (req.aborted || res.destroyed) return;
       const actorId = req.accountSession.account.id;
+      const companyId = req.accountSession.account.companyId;
       const upload = { ...file, content: req.body };
       const result = req.knowledgeTopic.replaces
         ? await companyKnowledge.replace(
@@ -248,8 +267,9 @@ export function mountAccountRoutes(
             new Date(),
             (detail, during) =>
               accounts.recordEvent(req.accountSession, 'company_document_replaced', detail, during),
+            companyId,
           )
-        : await companyKnowledge.add(actorId, req.knowledgeTopic, upload, new Date());
+        : await companyKnowledge.add(actorId, req.knowledgeTopic, upload, new Date(), companyId);
       if (!res.destroyed) res.status(result.duplicate ? 200 : 201).json(result);
     },
   );
@@ -257,13 +277,17 @@ export function mountAccountRoutes(
   // 'additional', with a company_document_moved audit row (ids only).
   employees.patch('/company-knowledge/documents/:id', hr, async (req, res) => {
     res.json(
-      await library().move(req.params.id, req.body, (detail, during) =>
-        accounts.recordEvent(req.accountSession, 'company_document_moved', detail, during),
+      await library().move(
+        req.params.id,
+        req.body,
+        (detail, during) =>
+          accounts.recordEvent(req.accountSession, 'company_document_moved', detail, during),
+        req.accountSession.account.companyId,
       ),
     );
   });
   employees.delete('/company-knowledge/documents/:id', hr, async (req, res) => {
-    await library().remove(req.params.id);
+    await library().remove(req.params.id, req.accountSession.account.companyId);
     res.status(204).end();
   });
 
@@ -277,6 +301,7 @@ export function mountAccountRoutes(
       support: journey.support,
       gaps: journey.gaps,
       actions: journey.actions ?? null,
+      accounts,
     });
 
   mountDocumentSubmissionRoutes({

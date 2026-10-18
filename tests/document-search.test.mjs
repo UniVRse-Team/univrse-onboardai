@@ -151,6 +151,7 @@ test('a search posts the query to the serving config in chunk mode with a bearer
       searchResultMode: 'CHUNKS',
       chunkSpec: { numPreviousChunks: 1, numNextChunks: 1 },
     },
+    filter: 'companyId: ANY("univrse")',
   });
 });
 

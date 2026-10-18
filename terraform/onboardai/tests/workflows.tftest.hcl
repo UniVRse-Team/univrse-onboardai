@@ -102,10 +102,10 @@ run "deploy_flags_match_terraform" {
     condition = (
       strcontains(file("${path.module}/../../.github/workflows/deploy.yml"), "AI_MODE=$AI_MODE,GEMINI_MODEL=$GEMINI_MODEL,") &&
       strcontains(file("${path.module}/../../.github/workflows/deploy.yml"), ",VERTEX_SEARCH_LOCATION=$VERTEX_SEARCH_LOCATION,VERTEX_SEARCH_ENGINE_ID=$VERTEX_SEARCH_ENGINE_ID,FIRESTORE_DATABASE_ID=$FIRESTORE_DATABASE_ID,") &&
-      strcontains(file("${path.module}/../../.github/workflows/deploy.yml"), "DOCS_BUCKET=$GCP_PROJECT_ID-onboardai-docs$NAME_SUFFIX,VERTEX_SEARCH_DATA_STORE_ID=onboardai-docs$NAME_SUFFIX,") &&
+      strcontains(file("${path.module}/../../.github/workflows/deploy.yml"), "DOCS_BUCKET=$GCP_PROJECT_ID-onboardai-docs$NAME_SUFFIX,VERTEX_SEARCH_DATA_STORE_ID=onboardai-docs$NAME_SUFFIX,EMPLOYEE_DOCUMENTS_BUCKET=$GCP_PROJECT_ID-onboardai-employee-docs$NAME_SUFFIX,") &&
       strcontains(file("${path.module}/../../.github/workflows/deploy.yml"), "TTS_SERVICE_URL=$tts_url\"")
     )
-    error_message = "The api env (contract v2) must carry AI_MODE, GEMINI_MODEL, VERTEX_SEARCH_LOCATION, VERTEX_SEARCH_ENGINE_ID, FIRESTORE_DATABASE_ID, DOCS_BUCKET, VERTEX_SEARCH_DATA_STORE_ID and TTS_SERVICE_URL."
+    error_message = "The api env (contract v2) must carry AI_MODE, GEMINI_MODEL, VERTEX_SEARCH_LOCATION, VERTEX_SEARCH_ENGINE_ID, FIRESTORE_DATABASE_ID, DOCS_BUCKET, VERTEX_SEARCH_DATA_STORE_ID, EMPLOYEE_DOCUMENTS_BUCKET and TTS_SERVICE_URL."
   }
 
   # The deploy job takes the three contract v2 values from the repository
