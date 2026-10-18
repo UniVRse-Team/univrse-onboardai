@@ -62,18 +62,6 @@ export default function AdminCompanyDetail({ companyId, navigate }) {
     loadCompany();
   }, [loadCompany]);
 
-  useEffect(() => {
-    setActiveTab('details');
-    setHrAccounts(null);
-    setEvents(null);
-    setNextBefore(null);
-    setRenameError('');
-    setRenameSuccess('');
-    setStatusError('');
-    setHrError('');
-    setEventsError('');
-  }, [companyId]);
-
   // Load HR Accounts
   const loadHrAccounts = useCallback(async () => {
     setLoadingHr(true);
@@ -287,8 +275,6 @@ export default function AdminCompanyDetail({ companyId, navigate }) {
               Company link:{' '}
               <a
                 href={`/companies/${company.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
                 style={{ color: '#256a91', textDecoration: 'underline' }}
               >
                 /companies/{company.id}
