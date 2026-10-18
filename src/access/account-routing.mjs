@@ -1,7 +1,7 @@
 // Which screen a signed-in or signed-out browser sees for a path.
 
-// HR lands on the workspace; an employee lands on My onboarding (the one onboarding page).
-export const landingPath = (account) => (account?.role === 'hr' ? '/hr' : '/onboarding');
+// HR lands on the workspace; an employee lands on Ask Alya.
+export const landingPath = (account) => (account?.role === 'hr' ? '/hr' : '/alya');
 
 const loginPaths = ['/', '/login'];
 

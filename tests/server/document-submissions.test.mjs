@@ -225,7 +225,7 @@ test('a saved document completes its task, a lost sync heals, and saved progress
     const hr = await app.hrBrowser();
     const { browser, employee } = await app.readyEmployee(hr);
     const id = employee.account.id;
-    const stepId = 'documentation.tax-id-documents';
+    const stepId = 'documentation.employee-information-form';
     const progress = `onboardingProgress/${id}`;
     const writeStep = (status, source) => {
       const current = app.firestore.read(progress) || { accountId: id, steps: {} };
@@ -238,7 +238,7 @@ test('a saved document completes its task, a lost sync heals, and saved progress
       });
     };
     const onboarding = async () => (await browser.get('/api/me/onboarding')).body;
-    // A brand-new employee: 0% and every task to do. Reading changes nothing.
+    // A brand-new employee: 0% in Documentation and every task to do. Reading changes nothing.
     const fresh = await onboarding();
     const documentation = fresh.areas.find((a) => a.id === 'documentation');
     assert.deepEqual([documentation.percent, documentation.done], [0, 0]);

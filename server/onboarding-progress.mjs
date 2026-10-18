@@ -20,7 +20,7 @@ const isObject = (value) => value !== null && typeof value === 'object' && !Arra
 const text = (value) => typeof value === 'string' && value.trim().length > 0;
 
 // A stored template as the server uses it, or null when it is not one: the
-// five areas in contract order, each with at least one required step, unique
+// five areas in contract order, each with at least one step, unique
 // step ids "<areaId>.<slug>", a known completion type, and a check exactly on
 // "check" steps. `required` defaults to true; the threshold to 70. A null
 // template makes the caller fall back to the built-in seed. A step's briefing
@@ -32,8 +32,7 @@ export function validTemplate(doc, track) {
   const areas = [];
   for (const [index, area] of doc.areas.entries()) {
     if (!isObject(area) || area.id !== areaOrder[index] || !text(area.title)) return null;
-    if (!Array.isArray(area.steps) || !area.steps.some((step) => step?.required !== false))
-      return null;
+    if (!Array.isArray(area.steps) || !area.steps.length) return null;
     const steps = [];
     for (const step of area.steps) {
       if (!isObject(step) || typeof step.id !== 'string' || !stepIdPattern.test(step.id))
@@ -211,7 +210,8 @@ export function buildOnboarding(template, progress) {
   });
   let firstBelow = null,
     firstAnywhere = null,
-    sum = 0;
+    sum = 0,
+    counted = 0;
   const areas = template.areas.map((area) => {
     let done = 0,
       total = 0,
@@ -250,7 +250,11 @@ export function buildOnboarding(template, progress) {
     const meetsThreshold = ratio * 100 >= threshold - 1e-9;
     if (todo && !firstAnywhere) firstAnywhere = nextOf(area, todo);
     if (todo && !meetsThreshold && !firstBelow) firstBelow = nextOf(area, todo);
-    sum += ratio;
+    // An area with no required step has nothing to measure, so it stays out of the overall percent.
+    if (total) {
+      sum += ratio;
+      counted++;
+    }
     return {
       id: area.id,
       icon: area.icon || '',
@@ -265,7 +269,7 @@ export function buildOnboarding(template, progress) {
   });
   return {
     track: template.track,
-    percent: Math.round((sum / template.areas.length) * 100),
+    percent: counted ? Math.round((sum / counted) * 100) : 100,
     threshold,
     complete: areas.every((area) => area.meetsThreshold),
     waitingOnHr,

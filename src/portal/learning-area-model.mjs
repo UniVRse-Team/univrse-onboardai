@@ -150,7 +150,10 @@ export function accessState(step, record) {
 // The checklist beside Alya: the same steps and statuses as the onboarding
 // section (never a second list). Only required steps are counted; a step is
 // "done" only when the server says so, never because its section was opened.
-export function checklistModel(onboarding, { accessStepIds = [], tools = {} } = {}) {
+export function checklistModel(
+  onboarding,
+  { accessStepIds = [], tools = {}, responsibilities = null } = {},
+) {
   // All five areas, Documentation included, so Alya's list is the same list and the
   // same saved progress as the My onboarding page.
   const groups = (onboarding?.areas || [])
@@ -168,18 +171,39 @@ export function checklistModel(onboarding, { accessStepIds = [], tools = {} } = 
           (accessStepIds.includes(step.id) && accessState(step, tools[step.id]) === 'awaiting'),
         state: taskStatusLabel(step, area.id, accessStepIds, tools[step.id]),
       }));
-      const required = tasks.filter((task) => task.required);
+      // The Roles & Responsibilities checklist sits first in Role, Tools & AI Readiness,
+      // as on the My onboarding page. It is an optional acknowledgement.
+      if (area.id === 'role-tools') {
+        const acknowledged = Boolean(responsibilities?.acknowledgedAt);
+        tasks.unshift({
+          id: 'role-tools.responsibilities',
+          title: 'Roles & Responsibilities',
+          required: false,
+          done: acknowledged,
+          started: false,
+          waiting: false,
+          // Listed for the employee, but not one of the counted onboarding tasks.
+          uncounted: true,
+          state: acknowledged ? 'Acknowledged' : 'Not Started',
+        });
+      }
+      // Every onboarding task counts, optional ones too, so "x of 8" is the whole list.
+      const counted = tasks.filter((task) => !task.uncounted);
       return {
         id: area.id,
         title: area.title,
         icon: area.icon,
         tasks,
-        done: required.filter((task) => task.done).length,
-        total: required.length,
+        done: counted.filter((task) => task.done).length,
+        total: counted.length,
+        requiredDone: counted.filter((task) => task.required && task.done).length,
+        requiredTotal: counted.filter((task) => task.required).length,
       };
     });
   const done = groups.reduce((sum, group) => sum + group.done, 0);
   const total = groups.reduce((sum, group) => sum + group.total, 0);
+  const requiredDone = groups.reduce((sum, group) => sum + group.requiredDone, 0);
+  const requiredTotal = groups.reduce((sum, group) => sum + group.requiredTotal, 0);
   // The current task: the first required task, in checklist order, that the
   // employee can still act on. Tasks waiting on someone else are skipped, not
   // counted as done. Optional tasks are never current.
@@ -194,13 +218,13 @@ export function checklistModel(onboarding, { accessStepIds = [], tools = {} } = 
     // The overall percent is the server's own, as on the My onboarding page.
     percent: Number.isFinite(onboarding?.percent)
       ? onboarding.percent
-      : total
-        ? Math.round((done / total) * 100)
+      : requiredTotal
+        ? Math.round((requiredDone / requiredTotal) * 100)
         : 0,
     current,
     waiting,
     // Genuine completion: every required task is done on the server.
-    complete: total > 0 && done === total,
+    complete: requiredTotal > 0 && requiredDone === requiredTotal,
   };
 }
 

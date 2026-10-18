@@ -34,7 +34,7 @@ export const areaOrder = Object.freeze([
 ]);
 export const completionTypes = Object.freeze(['self', 'hr_verify', 'check']);
 export const checkTypes = Object.freeze(['choice', 'written']);
-export const templateVersion = 8;
+export const templateVersion = 9;
 // Every area must reach this percent of its required steps (contract v1.2).
 export const completionThreshold = 70;
 export const briefingMaxLength = 400;
@@ -272,8 +272,9 @@ const areaText = {
   },
 };
 
-// Every track shares the same steps: Documentation 3, Policies 3, Alignment 4,
-// Role & Tools 10, People & Support 4 (the 70% rule applies to each area).
+// Every track shares the same steps: Documentation 1, Policies 2, Alignment 3,
+// Role & Tools 1 (optional), People & Support 1 (optional). The 70% rule applies to
+// each area's required steps; the Role responsibilities checklist is an area activity.
 const policies = [
   checked(
     'employee-handbook',
@@ -294,16 +295,6 @@ const policies = [
     briefing(
       null,
       'Read the Business Conduct Policy, which sets out the standards for meetings, email and messaging, confidentiality, fair competition and anti-bribery. Open it with the link on this task, then confirm here once you have read it. Ask HR if anything is unclear.',
-    ),
-  ),
-  self(
-    'sop-internal-meeting',
-    'Read and understand the SOP for Internal Meetings',
-    'Read the meeting sections of the Business Conduct Policy (preparing for, running and following up a meeting), then confirm that you have read and understood them.',
-    'How should I prepare for and follow up an internal meeting?',
-    briefing(
-      null,
-      'The Business Conduct Policy explains how to prepare for, run and follow up meetings: agree an agenda, arrive five minutes early, and record decisions and action items with owners and due dates. Read it with the link on this task, then confirm here. The regular internal meeting is on Friday at 9:30 a.m.',
     ),
   ),
 ];
@@ -359,22 +350,12 @@ const additionalAlignment = [
 const alignment = [
   self(
     'mission-values',
-    'Read and understand the company’s Vision & Core Values',
+    'Read and Understand Company Overview',
     'Read the Company Overview, then show what you know about the vision, mission and core values.',
     'What are the company’s vision, mission and core values?',
     briefing(
       handbookTitle,
       'Our vision is to positively impact 1 billion people’s lives through technology, creativity and innovation. Our mission is to enhance people’s lives through IT, build a globally recognised brand and bring together experts and partners. The seven core values are value driven, be happy, be trustworthy, elegant solution, evolve in learning, spread positivity and teamwork.',
-    ),
-  ),
-  self(
-    'social-media-accounts',
-    'Add the company social media accounts',
-    'Follow or add the company’s official social media accounts (LinkedIn, Facebook, Instagram and YouTube) from the links shared by the company, then confirm here.',
-    'Which company social media accounts should I add?',
-    briefing(
-      null,
-      'The Company Overview lists the official channels: LinkedIn, Facebook, Instagram, YouTube and the website. The account links are still to be added by the company, so use only links shared by the company or its approved internal directory. Do not create accounts or post for the company without authorisation.',
     ),
   ),
   self(
@@ -409,108 +390,6 @@ const workingPreferences = {
   required: false,
 };
 const roleTools = [
-  self(
-    'gsheet-account',
-    'Set up an account in GSheet',
-    'Use the Google account provided or approved for work to access the assigned Google Sheet (GSheet).',
-    'How do I set up my account in GSheet?',
-    briefing(
-      roleToolsTitle,
-      'Use the Google account provided or approved for work to access your assigned Google Sheet. Make sure you are signed in with your work account before opening the sheet.',
-    ),
-  ),
-  self(
-    'individual-gsheet',
-    'Accept the invitation to open your Individual GSheet',
-    'Open the invitation from the onboarding coordinator and check that you can access your individual sheet.',
-    'How do I open my Individual GSheet invitation?',
-    briefing(
-      roleToolsTitle,
-      'Check your inbox for the invitation from the onboarding coordinator to open your Individual GSheet. Open the sheet and confirm that you can view and edit your assigned rows.',
-    ),
-  ),
-  checked(
-    'gsheet-training-sop',
-    'Complete basic GSheet training and study the GSheet SOP',
-    'Learn where to find tasks, how to update their status, and how to follow the instructions provided in the GSheet SOP.',
-    'What should I learn in the GSheet training and GSheet SOP?',
-    briefing(
-      roleToolsTitle,
-      'Complete the basic GSheet training and study the GSheet Standard Operating Procedure. Learn where your tasks are listed, how to update their status, and how to follow the instructions in the SOP.',
-    ),
-    checks.gsheetSop,
-  ),
-  self(
-    'drive-shared-folders',
-    'Share relevant documents and folders in Drive',
-    'Check that you can access the Google Drive folders needed for your role and follow the access instructions given.',
-    'How do I access and share relevant folders in Google Drive?',
-    briefing(
-      roleToolsTitle,
-      'Check that you can access the Google Drive folders needed for your role. Use those shared folders for your work files and follow the access instructions given by your team.',
-    ),
-  ),
-  self(
-    'gmail-google-chat',
-    'Create a Gmail account / use Google Chat',
-    'Use the work account or communication method provided for onboarding. Google Chat is used to communicate with the relevant team.',
-    'How do I set up Gmail and Google Chat for onboarding?',
-    briefing(
-      roleToolsTitle,
-      'Use the work account or communication method provided for onboarding to sign in to Gmail and Google Chat. Google Chat is used to communicate with your team throughout the day.',
-    ),
-  ),
-  self(
-    'gmail-profile-picture',
-    'Add a proper picture to your Gmail profile',
-    'Use a clear and professional profile picture that is suitable for a workplace account.',
-    'What kind of picture should I use for my Gmail profile?',
-    briefing(
-      roleToolsTitle,
-      'Add a clear and professional profile picture to your Gmail account. Choose a photo that is suitable for a workplace account so colleagues can recognise you easily.',
-    ),
-  ),
-  self(
-    'professional-email',
-    'Create a professional email for the new employee',
-    'Use the company email address or account assigned to you for work-related communication.',
-    'Which email account should I use for work communication?',
-    briefing(
-      roleToolsTitle,
-      'Use the company email address or account assigned to you for all work-related communication. Check that you can send and receive messages from your assigned address.',
-    ),
-  ),
-  self(
-    'link-official-email',
-    'Link the official email to Gmail',
-    'If instructed, connect or add the official work email to Gmail and check that it is working.',
-    'How do I link my official work email to Gmail?',
-    briefing(
-      roleToolsTitle,
-      'If instructed during onboarding, connect or add your official work email to Gmail. Send a quick test message to confirm that your linked address is working properly.',
-    ),
-  ),
-  self(
-    'email-signature',
-    'Add a professional email signature',
-    'Add a simple signature with your name, job title, company name and approved contact details.',
-    'What should I include in my professional email signature?',
-    briefing(
-      roleToolsTitle,
-      'Set up a simple email signature in Gmail with your full name, job title, company name and approved contact details. Keep the formatting clean so it appears on every work email you send.',
-    ),
-  ),
-  checked(
-    'gsheet-daily-updates',
-    'Understand how to do daily updates in GSheet',
-    'Update your tasks honestly and clearly, including progress, completed work and any issue that needs help.',
-    'How should I record my daily updates in GSheet?',
-    briefing(
-      roleToolsTitle,
-      'Record your daily updates in GSheet honestly and clearly. Include your current progress, any completed work, and any issue or blocker where you need help from your team.',
-    ),
-    checks.gsheetDailyUpdates,
-  ),
   {
     ...self(
       'ai-readiness-training',
@@ -522,71 +401,9 @@ const roleTools = [
     required: false,
   },
 ];
-const teamSupport = [
-  self(
-    'company-chat-groups',
-    'Join company chat groups',
-    'Join the company-wide chat groups shared by the onboarding coordinator for work announcements and communication.',
-    'How do I join the company-wide chat groups?',
-    briefing(
-      peopleSupportTitle,
-      'Join the company-wide chat groups shared by your onboarding coordinator. Use these groups to stay updated on company announcements and general work communication.',
-    ),
-  ),
-  self(
-    'department-chat-group',
-    'Join the respective department’s chat group',
-    'Join the chat group for your department so you can receive team updates and communicate with colleagues about work.',
-    'How do I join my department’s chat group?',
-    briefing(
-      peopleSupportTitle,
-      'Join the chat group for your department so you can receive team updates and coordinate daily work with your colleagues. Ask your onboarding coordinator if you have not received the invite link yet.',
-    ),
-  ),
-  self(
-    'talent-personality-test',
-    'Complete the Talent Personality Test',
-    'Complete the Talent Personality Test (https://www.personalityhub.net/enneagram-test) if assigned and share the result with your onboarding contact if requested.',
-    'How do I complete the Talent Personality Test?',
-    briefing(
-      peopleSupportTitle,
-      'Complete the Talent Personality Test on the Personality Hub Enneagram page if it has been assigned to you. Follow the instructions provided and share your result with the designated onboarding contact if requested.',
-    ),
-  ),
-  self(
-    'mbti-personality-test',
-    'Complete the MBTI Personality Test',
-    'Complete the MBTI Personality Test (https://www.16personalities.com/free-personality-test) if assigned as a conversation starter for working preferences.',
-    'How do I complete the MBTI Personality Test, and how is the result used?',
-    briefing(
-      peopleSupportTitle,
-      'Complete the free MBTI Personality Test on 16Personalities if it has been assigned to you. The result is used as a friendly conversation starter to understand working preferences and is never treated as a test of ability.',
-    ),
-  ),
-  workingPreferences,
-];
+const teamSupport = [workingPreferences];
 // Documentation is the same for every track: three documents the employee saves.
 const documentation = [
-  hrVerify(
-    'tax-id-documents',
-    'Pass over a copy of your IC (front and back)',
-    'Upload a clear copy of the front and back of your IC.',
-    'How do I submit a copy of my IC?',
-    briefing(
-      null,
-      'Upload a clear copy of the front and back of your IC. The task is complete once your document is saved. HR reviews documents separately.',
-    ),
-  ),
-  hrVerify(
-    'personal-bank-details',
-    'Add your details into the Employees/Interns Record',
-    'Upload your completed details for the Employees/Interns Record.',
-    'How do I add my details to the Employees/Interns Record?',
-    briefing(
-      null,
-      'Upload your completed details for the Employees and Interns Record. The task is complete once your document is saved. HR reviews documents separately.',
-    ),
-  ),
   hrVerify(
     'employee-information-form',
     'Upload your Employee Information Form',

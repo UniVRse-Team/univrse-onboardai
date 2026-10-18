@@ -64,7 +64,7 @@ const progress = (accountId) => ({
 });
 
 test('migration 003 and 005 upgrade older templates, are idempotent and never touch progress', async () => {
-  assert.equal(templateVersion, 8);
+  assert.equal(templateVersion, 9);
   assert.ok(firestoreMigrationFiles().includes('003_onboarding_templates_v2.mjs'));
   assert.ok(firestoreMigrationFiles().includes('005_onboarding_templates_v3.mjs'));
   assert.ok(firestoreMigrationFiles().includes('006_onboarding_templates_v4.mjs'));
@@ -72,6 +72,7 @@ test('migration 003 and 005 upgrade older templates, are idempotent and never to
   assert.ok(firestoreMigrationFiles().includes('008_onboarding_templates_v6.mjs'));
   assert.ok(firestoreMigrationFiles().includes('009_onboarding_templates_v7.mjs'));
   assert.ok(firestoreMigrationFiles().includes('010_onboarding_templates_v8.mjs'));
+  assert.ok(firestoreMigrationFiles().includes('012_onboarding_templates_v9.mjs'));
   const firestore = new FakeFirestore();
   for (const track of tracks) {
     // A version-1 template is still a valid (legacy) template.
@@ -127,7 +128,7 @@ test('migration 003 and 005 upgrade older templates, are idempotent and never to
   assert.ok(lines.every((line) => !line.includes('contract ') && !line.includes('briefing')));
 });
 
-test('a stack where 001 and 002 already ran gets 003 to 010, which upgrade its templates', async () => {
+test('a stack where 001 and 002 already ran gets 003 to 011, which upgrade its templates', async () => {
   const firestore = new FakeFirestore();
   for (const track of tracks) firestore.write(`onboardingTemplates/${track}`, versionOne(track));
   for (const name of ['001_onboarding_templates.mjs', '002_quick_questions.mjs'])
@@ -142,6 +143,7 @@ test('a stack where 001 and 002 already ran gets 003 to 010, which upgrade its t
     '008_onboarding_templates_v6.mjs',
     '009_onboarding_templates_v7.mjs',
     '010_onboarding_templates_v8.mjs',
+    '012_onboarding_templates_v9.mjs',
   ]);
   assert.equal(firestore.read('onboardingTemplates/employee').version, templateVersion);
   assert.deepEqual((await migrateFirestore(firestore, { log: () => {} })).applied, []);
