@@ -1,4 +1,5 @@
 import { ChatError } from './chat-errors.mjs';
+import { contentPackOf } from './companies.mjs';
 import {
   ALIGNMENT_ACTIVITIES,
   APPROVED_HANDBOOK_METADATA,
@@ -76,6 +77,7 @@ export function mountTaskVerificationRoutes({
   journey,
   store,
   contentSource = createVerificationContentSource(),
+  accounts = null,
 }) {
   const account = (req) => req.accountSession.account;
 
@@ -197,7 +199,26 @@ export function mountTaskVerificationRoutes({
     return null;
   };
 
-  me.get('/company-policy-handbook', employee, async (_req, res) => {
+  me.get('/company-policy-handbook', employee, async (req, res) => {
+    const acc = account(req);
+    if (contentPackOf(acc.companyId) !== 'univrse') {
+      return res.json({
+        metadata: null,
+        policies: {},
+        alignment: {},
+        responsibilities: [],
+        supportRouting: null,
+        verifiedDirectory: null,
+        toolAccessSteps: [],
+        contentRequirements: [],
+        config: {
+          policyPassingScore: policyPassingScore(),
+          alignmentPassingScore: alignmentPassingScore(),
+          allowRetries: true,
+          maxAttemptsPerDay: 5,
+        },
+      });
+    }
     res.json({
       metadata: APPROVED_HANDBOOK_METADATA,
       ...publicVerificationContent(contentSource()),
@@ -212,6 +233,9 @@ export function mountTaskVerificationRoutes({
 
   me.post('/task-verifications/:areaId/:activityId', employee, async (req, res) => {
     const acc = account(req);
+    if (contentPackOf(acc.companyId) !== 'univrse') {
+      throw new ChatError(404, 'ACTIVITY_NOT_FOUND', 'Verification activity not found.');
+    }
     const { areaId, activityId } = req.params;
     const body = req.body && typeof req.body === 'object' ? req.body : {};
 
@@ -478,6 +502,7 @@ export function mountTaskVerificationRoutes({
   // completes an access step; the employee's request alone never does.
   hr.post('/employees/:id/task-verifications/tool-access/:stepId', hrOnly, async (req, res) => {
     const { id, stepId } = req.params;
+    if (accounts) await accounts.getEmployee(req.accountSession, id);
     if (!TOOL_ACCESS_STEP_IDS.includes(stepId))
       throw new ChatError(400, 'TOOL_NOT_FOUND', 'This step does not use an access confirmation.');
     const current = await store.getVerifications(id);
@@ -500,6 +525,7 @@ export function mountTaskVerificationRoutes({
 
   // Pending access requests of one employee, for the coordinator.
   hr.get('/employees/:id/task-verifications', hrOnly, async (req, res) => {
+    if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);
     const saved = await store.getVerifications(req.params.id);
     // Working preferences, drafts and raw answers are the employee's own; HR sees outcomes only.
     const { drafts: _drafts, sessions: _sessions, ...rest } = saved.verifications;

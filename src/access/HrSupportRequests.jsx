@@ -73,11 +73,18 @@ function RequestCard({ request, onSaved }) {
           <h3 id={id + '-name'}>{name}</h3>
           <small>
             {request.employee?.username} · sent {formatWhen(request.createdAt)}
+            {request.assignedHr?.username ? ` · Assigned to ${request.assignedHr.username}` : ''}
           </small>
         </div>
         <span className={'hrj-status ' + request.status}>{statusLabel(request.status)}</span>
       </header>
       <dl className="hrj-thread">
+        {request.assignedHr?.username && (
+          <div>
+            <dt>Assigned HR</dt>
+            <dd>{request.assignedHr.username}</dd>
+          </div>
+        )}
         <div>
           <dt>Question</dt>
           <dd>{request.question}</dd>

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { DEFAULT_COMPANY_ID } from './companies.mjs';
 import { ChatError } from './chat-errors.mjs';
 import {
   documentTypes,
@@ -60,7 +61,10 @@ export function createDocumentSubmissions({
     if (!validId(id)) throw notFound();
     const snapshot = await (await collection()).doc(id).get();
     const data = snapshot.exists ? snapshot.data() : null;
-    if (!data || (account.role !== 'hr' && data.employeeAccountId !== account.id)) throw notFound();
+    if (!data) throw notFound();
+    if (account.role !== 'hr' && data.employeeAccountId !== account.id) throw notFound();
+    if (account.companyId && data.companyId && data.companyId !== account.companyId)
+      throw notFound();
     return data;
   }
   const sync = async (accountId) => {
@@ -87,7 +91,11 @@ export function createDocumentSubmissions({
     },
     async list(account) {
       let query = await collection();
-      if (account.role !== 'hr') query = query.where('employeeAccountId', '==', account.id);
+      if (account.role !== 'hr') {
+        query = query.where('employeeAccountId', '==', account.id);
+      } else if (account.companyId) {
+        query = query.where('companyId', '==', account.companyId);
+      }
       const snapshot = await query.get();
       return {
         submissions: snapshot.docs
@@ -136,6 +144,7 @@ export function createDocumentSubmissions({
         employeeId: account.username,
         employeeName: profile?.job?.fullName || account.username,
         department: profile?.job?.department || 'Not assigned',
+        companyId: account.companyId || DEFAULT_COMPANY_ID,
         type,
         title: step?.title || title.trim(),
         stepId: step?.id || null,
@@ -185,6 +194,8 @@ export function createDocumentSubmissions({
         const snap = await tx.get(ref);
         if (!snap.exists) throw notFound();
         const record = snap.data();
+        if (account.companyId && record.companyId && record.companyId !== account.companyId)
+          throw notFound();
         if (record.revision !== revision)
           throw fail(409, 'This submission changed. Refresh and review the latest version.');
         if (decided.includes(record.status))

@@ -253,6 +253,8 @@ export function primaryAction(
 ) {
   const kind = verificationGuide(step, areaId, accessStepIds).kind;
   const done = step.status === 'done';
+  // HR confirms these; the employee has nothing to press.
+  if (step.completion === 'hr_verify') return null;
   const quizLabel = (noun) =>
     ({
       'not-started': 'Start ' + noun,

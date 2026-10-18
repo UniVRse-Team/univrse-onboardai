@@ -4,7 +4,7 @@ import { journeyErrors } from './account-errors.mjs';
 // Persisted inside onboardingProgress/{accountId}.aiProficiency and synced
 // with onboardingProgress.steps['role-tools.ai-readiness-training'].
 export const AI_READINESS_STEP_ID = 'role-tools.ai-readiness-training';
-export const DEFAULT_COMPANY_ID = 'univrse';
+export { DEFAULT_COMPANY_ID } from './companies.mjs';
 
 export const aiProficiencyStatuses = Object.freeze([
   'unanswered',

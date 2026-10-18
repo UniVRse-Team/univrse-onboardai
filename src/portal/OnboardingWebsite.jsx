@@ -10,7 +10,8 @@ import EmployeeFootprint from './EmployeeFootprint';
 import ActivityPage from './ActivityPage';
 import { activityIdFromPath } from './activity-model.mjs';
 import useAccountSession from '../access/use-account-session';
-import { landingPath, routeDecision } from '../access/account-routing.mjs';
+import { landingPath, routeDecision, isAdminArea } from '../access/account-routing.mjs';
+import AdminPortal from '../admin/AdminPortal';
 import { readNotes, writeNotes } from './support-notes.mjs';
 import './website.css';
 
@@ -419,9 +420,12 @@ export default function OnboardingWebsite() {
           ? 'Create an employee account'
           : path === '/hr'
             ? 'HR workspace'
-            : null;
-    document.title = (accessTitle || active?.label || 'Page not found') + ' · Onboard.AI';
-  }, [path, account?.role]);
+            : isAdminArea(path)
+              ? 'Platform Admin'
+              : null;
+    const companyBrand = account?.company?.name || 'OnboardAi';
+    document.title = (accessTitle || active?.label || 'Page not found') + ' · ' + companyBrand;
+  }, [path, account?.role, account?.company?.name]);
   useEffect(() => {
     // Sign-in state decides some landing pages; replace so Back does not loop.
     if (decision.type !== 'redirect' || decision.to === path) return;
@@ -485,6 +489,10 @@ export default function OnboardingWebsite() {
       />
     );
   if (path === '/hr') return <HrWorkspace account={account} onSignOut={session.signOut} />;
+  if (account?.role === 'admin' || isAdminArea(path))
+    return (
+      <AdminPortal account={account} path={path} navigate={navigate} onSignOut={session.signOut} />
+    );
   return (
     <div className={'uv-portal' + (assistantPath ? ' uv-assistant-workspace' : '')}>
       <a className="uv-skip-link" href="#uv-main">
@@ -500,11 +508,15 @@ export default function OnboardingWebsite() {
           >
             <Brand />
           </Link>
-          <span className="uv-header-caption">A NEW CHAPTER. A SHARED UNIVERSE.</span>
+          <span className="uv-header-caption">
+            {account?.company?.name
+              ? `${account.company.name.toUpperCase()} ONBOARDING`
+              : 'A NEW CHAPTER. A SHARED UNIVERSE.'}
+          </span>
           <div className="uv-header-actions">
             <span className="uv-preview-label">
               <span className="uv-small-dot mint" />
-              EMPLOYEE
+              {account?.company?.name ? account.company.name.toUpperCase() : 'EMPLOYEE'}
             </span>
             {account ? (
               <>

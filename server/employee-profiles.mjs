@@ -274,18 +274,20 @@ export function createProfileStore({
       }
       return found;
     },
-    write: (accountId, profile, updatedBy, at) =>
+    write: (accountId, profile, updatedBy, at, companyId = 'univrse') =>
       guarded('save employee profile', async () => {
-        const stored = { ...profile, updatedAt: at.toISOString(), updatedBy };
+        const stored = { ...profile, updatedAt: at.toISOString(), updatedBy, companyId };
         await ref(await database(), accountId).set(stored);
         return presentProfile(stored);
       }),
     // Department -> number of profiles, for HR's department list. The profile
     // collection is small, so this reads each profile's job group.
-    countByDepartment: () =>
+    countByDepartment: (companyId = null) =>
       guarded('count employee departments', async () => {
         const db = await database();
-        const snapshot = await db.collection(profileCollection).select('job').get();
+        let query = db.collection(profileCollection);
+        if (companyId) query = query.where('companyId', '==', companyId);
+        const snapshot = await query.select('job').get();
         const counts = new Map();
         for (const doc of snapshot.docs) {
           const name = doc.data()?.job?.department;
@@ -299,10 +301,12 @@ export function createProfileStore({
     // later step fails). If a batch fails, the batches before it are put back
     // here and the error is thrown, so the rename is all or (as far as
     // Firestore allows) nothing; repeating it is safe.
-    renameDepartment: (from, to) =>
+    renameDepartment: (from, to, companyId = null) =>
       guarded('rename profile department', async () => {
         const db = await database();
-        const snapshot = await db.collection(profileCollection).select('job').get();
+        let query = db.collection(profileCollection);
+        if (companyId) query = query.where('companyId', '==', companyId);
+        const snapshot = await query.select('job').get();
         const matching = snapshot.docs
           .map((doc) => ({ ref: doc.ref, job: doc.data()?.job }))
           .filter(({ job }) => job?.department === from);

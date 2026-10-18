@@ -104,3 +104,9 @@ test('clipboard fallback decision', async () => {
   assert.equal(copyStatusMessage('password', { copied: true }), 'Copied password');
   assert.equal(copyStatusMessage('password', { copied: false }), manualCopyMessage);
 });
+
+test('when departments list is empty, departmentProblem and idFormatHint return hint', () => {
+  const form = profileToForm(null);
+  assert.equal(departmentProblem(form, []), 'Add a department in Settings first');
+  assert.equal(idFormatHint([], 'Any'), 'Add a department in Settings first');
+});

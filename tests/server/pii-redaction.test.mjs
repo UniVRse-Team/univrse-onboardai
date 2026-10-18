@@ -72,11 +72,12 @@ test('a gap document holds the redacted question, topic, track, nearest source a
     topic: 'parking for [employee id]',
     track: 'intern',
     nearestSource: { title: 'Synthetic handbook', heading: 'Parking' },
+    companyId: 'univrse',
     createdDay: '2026-10-16', // the company's calendar day (UTC+8), no time
   });
   assert.deepEqual(
     Object.keys(gapDocument({ question: 'x', topic: '', track: 'nope' }, new Date())).sort(),
-    ['createdDay', 'nearestSource', 'questionRedacted', 'topic', 'track'],
+    ['companyId', 'createdDay', 'nearestSource', 'questionRedacted', 'topic', 'track'],
   );
   assert.equal(normaliseTopic(''), 'other');
   assert.equal(gapDocument({ question: 'x', track: 'nope' }, new Date()).track, 'employee');

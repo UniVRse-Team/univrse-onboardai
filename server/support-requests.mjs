@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { DEFAULT_COMPANY_ID } from './companies.mjs';
 import { journeyErrors } from './account-errors.mjs';
 import { answerNotFound } from './chat-errors.mjs';
 import { createStorageCall } from './firestore-client.mjs';
@@ -94,8 +95,8 @@ export const myRequestView = (doc) => ({
   updatedAt: doc.updatedAt,
 });
 // HR's view: the document without accountId and conversationId, plus the
-// employee's ID and display name.
-export function hrRequestView(doc, employee) {
+// employee's ID and display name, and assignedHr.
+export function hrRequestView(doc, employee, assignedHr = null) {
   const { accountId, conversationId, ...rest } = doc;
   return {
     ...rest,
@@ -106,6 +107,7 @@ export function hrRequestView(doc, employee) {
     docToUpdate: rest.docToUpdate ?? null,
     updatedBy: rest.updatedBy ?? null,
     employee,
+    assignedHr,
   };
 }
 const displayName = ({ account, profile }) =>
@@ -235,12 +237,21 @@ export function createSupportRequests({
     const result = await guarded('save support request', async () => {
       const db = await database();
       const ref = db.collection(journeyCollections.supportRequests).doc(id);
+      let assignedHrAccountId = null;
+      if (accounts?.getCompany) {
+        try {
+          const comp = await accounts.getCompany(account.companyId || DEFAULT_COMPANY_ID);
+          assignedHrAccountId = comp?.defaultHr?.id ?? null;
+        } catch {}
+      }
       return db.runTransaction(async (tx) => {
         const existing = await tx.get(ref);
         if (existing.exists) return { created: false, doc: existing.data() };
         const doc = {
           id,
           accountId: account.id,
+          companyId: account.companyId || DEFAULT_COMPANY_ID,
+          assignedHrAccountId,
           conversationId,
           messageId,
           ...content,
@@ -278,14 +289,35 @@ export function createSupportRequests({
       .map(myRequestView);
   }
 
-  async function allDocs() {
-    const found = await guarded('read support requests', async () => (await collection()).get());
-    return found.docs.map((doc) => doc.data());
-  }
   // GET /api/hr/support-requests: open first, then newest first. Requests of
   // accounts that no longer exist are left out (deletion removes them).
-  async function hrList() {
-    const [docs, employees] = await Promise.all([allDocs(), accounts.listEmployees()]);
+  async function hrList(actorOrCompanyId = null) {
+    const actor =
+      actorOrCompanyId && typeof actorOrCompanyId === 'object' && actorOrCompanyId.account
+        ? actorOrCompanyId
+        : null;
+    const companyId = actor
+      ? actor.account.companyId
+      : typeof actorOrCompanyId === 'string'
+        ? actorOrCompanyId
+        : DEFAULT_COMPANY_ID;
+
+    const [docs, employees, hrAccounts] = await Promise.all([
+      guarded('read support requests', async () => {
+        const col = await collection();
+        return companyId ? col.where('companyId', '==', companyId).get() : col.get();
+      }).then((snap) => snap.docs.map((d) => d.data())),
+      accounts.listEmployees(actor || companyId),
+      accounts.listCompanyHr
+        ? accounts
+            .listCompanyHr(companyId)
+            .then((r) => r.hrAccounts)
+            .catch(() => [])
+        : Promise.resolve([]),
+    ]);
+    const hrById = new Map(
+      (hrAccounts || []).map((h) => [h.id, { id: h.id, username: h.username }]),
+    );
     const byId = new Map(employees.map((item) => [item.account.id, item]));
     const requests = docs
       .filter((doc) => byId.has(doc.accountId))
@@ -296,11 +328,18 @@ export function createSupportRequests({
       )
       .map((doc) => {
         const item = byId.get(doc.accountId);
-        return hrRequestView(doc, {
-          id: item.account.id,
-          username: item.account.username,
-          name: displayName(item),
-        });
+        const assignedHr = doc.assignedHrAccountId
+          ? (hrById.get(doc.assignedHrAccountId) ?? null)
+          : null;
+        return hrRequestView(
+          doc,
+          {
+            id: item.account.id,
+            username: item.account.username,
+            name: displayName(item),
+          },
+          assignedHr,
+        );
       });
     const counts = Object.fromEntries(requestStatuses.map((status) => [status, 0]));
     for (const request of requests) if (request.status in counts) counts[request.status]++;
@@ -316,7 +355,15 @@ export function createSupportRequests({
       (await collection()).doc(id).get(),
     );
     if (!before.exists) throw journeyErrors.supportRequestNotFound();
-    const accountId = before.data().accountId;
+    const beforeData = before.data();
+    if (
+      beforeData.companyId &&
+      actor?.account?.companyId &&
+      beforeData.companyId !== actor.account.companyId
+    ) {
+      throw journeyErrors.supportRequestNotFound();
+    }
+    const accountId = beforeData.accountId;
     let updated;
     try {
       updated = await accounts.recordEmployeeChange(
@@ -330,8 +377,16 @@ export function createSupportRequests({
             return db.runTransaction(async (tx) => {
               const snapshot = await tx.get(ref);
               if (!snapshot.exists) throw journeyErrors.supportRequestNotFound();
+              const snapData = snapshot.data();
+              if (
+                snapData.companyId &&
+                actor?.account?.companyId &&
+                snapData.companyId !== actor.account.companyId
+              ) {
+                throw journeyErrors.supportRequestNotFound();
+              }
               const next = {
-                ...applyRequestPatch(snapshot.data(), changes),
+                ...applyRequestPatch(snapData, changes),
                 updatedAt: now().toISOString(),
                 updatedBy: actor.account.id,
               };
@@ -339,23 +394,35 @@ export function createSupportRequests({
               return next;
             });
           }),
-        { supportRequestId: id, status: changes.status ?? before.data().status },
+        { supportRequestId: id, status: changes.status ?? beforeData.status },
       );
     } catch (error) {
       if (error?.code === 'EMPLOYEE_NOT_FOUND') throw journeyErrors.supportRequestNotFound();
       throw error;
     }
-    const { account, profile } = await accounts.getEmployee(accountId);
-    return hrRequestView(updated, {
-      id: account.id,
-      username: account.username,
-      name: profile?.job.preferredName || profile?.job.fullName || account.username,
-    });
+    const { account, profile } = await accounts.getEmployee(actor, accountId);
+    let assignedHr = null;
+    if (updated.assignedHrAccountId && accounts.listCompanyHr && actor?.account?.companyId) {
+      try {
+        const { hrAccounts } = await accounts.listCompanyHr(actor.account.companyId);
+        const hr = (hrAccounts || []).find((h) => h.id === updated.assignedHrAccountId);
+        if (hr) assignedHr = { id: hr.id, username: hr.username };
+      } catch {}
+    }
+    return hrRequestView(
+      updated,
+      {
+        id: account.id,
+        username: account.username,
+        name: profile?.job.preferredName || profile?.job.fullName || account.username,
+      },
+      assignedHr,
+    );
   }
 
   // GET /api/hr/team-insights: every employee's support summary, summed.
-  async function insights() {
-    const employees = await accounts.listEmployees();
+  async function insights(actor = null) {
+    const employees = await accounts.listEmployees(actor);
     const summaries = [];
     for (let i = 0; i < employees.length; i += 10) {
       const batch = employees.slice(i, i + 10);
@@ -372,11 +439,20 @@ export function createSupportRequests({
       );
     }
     const known = new Set(employees.map((item) => item.account.id));
-    const open = await guarded('count support requests', async () =>
-      (await collection()).where('status', '==', 'open').select('accountId').get(),
-    );
+    const companyId = actor?.account?.companyId;
+    const open = await guarded('count support requests', async () => {
+      const col = await collection();
+      const q = companyId ? col.where('companyId', '==', companyId) : col;
+      return q.select('accountId', 'status', 'companyId').get();
+    });
     return teamInsights(summaries, {
-      openSupportRequests: open.docs.filter((doc) => known.has(doc.data().accountId)).length,
+      openSupportRequests: open.docs
+        .filter(
+          (doc) =>
+            doc.data().status === 'open' &&
+            (!companyId || (doc.data().companyId || 'univrse') === companyId),
+        )
+        .filter((doc) => known.has(doc.data().accountId)).length,
     });
   }
 

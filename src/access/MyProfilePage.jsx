@@ -24,7 +24,10 @@ export default function MyProfilePage({ account }) {
     <section className="account-profile" aria-labelledby="my-profile-heading">
       <header className="uv-page-heading">
         <div>
-          <span className="uv-eyebrow">SIGNED IN AS {account.username.toUpperCase()}</span>
+          <span className="uv-eyebrow">
+            {account?.company?.name ? `${account.company.name.toUpperCase()} · ` : ''}
+            SIGNED IN AS {account.username.toUpperCase()}
+          </span>
           <h1 id="my-profile-heading" tabIndex={-1} ref={headingRef}>
             My profile
           </h1>

@@ -19,6 +19,13 @@ import { mountTaskVerificationRoutes } from './task-verification-routes.mjs';
 //   hr (role hr):        /api/hr/support-requests*, /api/hr/knowledge-gaps,
 //                        /api/hr/team-insights, /api/hr/employees/:id/onboarding*,
 //                        /api/hr/employees/:id/first-day
+export const ALIGNMENT_STEP_IDS = Object.freeze([
+  'alignment.products-customers',
+  'alignment.mission-values',
+  'alignment.org-structure',
+  'alignment.role-contribution',
+]);
+
 export function mountOnboardingRoutes({
   me,
   hr,
@@ -29,6 +36,7 @@ export function mountOnboardingRoutes({
   gaps,
   actions = null,
   taskVerificationStore = null,
+  accounts = null,
 }) {
   const account = (req) => req.accountSession.account;
   const verifications =
@@ -99,35 +107,48 @@ export function mountOnboardingRoutes({
     res.json(await actions.decide(account(req), req.params.id, req.body));
   });
 
-  mountTaskVerificationRoutes({ me, hr, employee, hrOnly, journey, store: verifications });
+  mountTaskVerificationRoutes({
+    me,
+    hr,
+    employee,
+    hrOnly,
+    journey,
+    store: verifications,
+    accounts,
+  });
 
   hr.get('/support-requests', hrOnly, async (req, res) => {
-    res.json(await support.hrList());
+    res.json(await support.hrList(req.accountSession));
   });
   hr.patch('/support-requests/:id', hrOnly, async (req, res) => {
     res.json({ request: await support.hrUpdate(req.accountSession, req.params.id, req.body) });
   });
   hr.get('/knowledge-gaps', hrOnly, async (req, res) => {
-    res.json(await gaps.list());
+    res.json(await gaps.list(req.accountSession.account.companyId));
   });
   hr.get('/team-insights', hrOnly, async (req, res) => {
-    res.json(await support.insights());
+    res.json(await support.insights(req.accountSession));
   });
   hr.get('/employees/:id/onboarding', hrOnly, async (req, res) => {
+    if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);
     res.json(await journey.employeeOnboarding(req.params.id));
   });
   hr.get('/employees/:id/ai-proficiency', hrOnly, async (req, res) => {
+    if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);
     res.json(await journey.employeeAiProficiency(req.params.id, req.accountSession, req.query));
   });
   hr.patch('/employees/:id/onboarding/steps/:stepId', hrOnly, async (req, res) => {
+    if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);
     res.json(
       await journey.setEmployeeStep(req.accountSession, req.params.id, req.params.stepId, req.body),
     );
   });
   hr.get('/employees/:id/first-day', hrOnly, async (req, res) => {
+    if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);
     res.json(await journey.employeeFirstDay(req.params.id));
   });
   hr.put('/employees/:id/first-day', hrOnly, async (req, res) => {
+    if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);
     res.json(await journey.putEmployeeFirstDay(req.accountSession, req.params.id, req.body));
   });
 }

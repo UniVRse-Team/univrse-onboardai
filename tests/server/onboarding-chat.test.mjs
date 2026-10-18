@@ -283,6 +283,7 @@ test('knowledge gaps: unanswered onboarding questions are logged without names, 
         topic: 'parking',
         track: 'intern',
         nearestSource: null,
+        companyId: 'univrse',
         createdDay: '2026-10-15',
       });
       assert.deepEqual(docs.find((doc) => doc.topic === 'gym').nearestSource, {
