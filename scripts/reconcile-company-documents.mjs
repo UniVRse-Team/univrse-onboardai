@@ -222,7 +222,7 @@ const firestoreBase = ({ firestoreProject, database }) =>
 export const firestoreRunQueryUrl = (config) => `${firestoreBase(config)}:runQuery`;
 export const firestoreDocumentUrl = (config, id) =>
   `${firestoreBase(config)}/${companyDocumentCollection}/${encodeURIComponent(id)}` +
-  '?mask.fieldPaths=status&mask.fieldPaths=fileName';
+  '?mask.fieldPaths=status&mask.fieldPaths=fileName&mask.fieldPaths=companyId';
 
 // The select-only query: the summary fields, never the legacy `text`.
 export const summaryQuery = () => ({
@@ -526,7 +526,7 @@ export async function executePlan({
     if (!response.ok) return response.status;
     const { data } = decodeFirestoreDocument(await response.json());
     if (data.status === 'retired' || !data.fileName) return true;
-    return gcsObjectName(item.firestoreId, data.fileName) !== item.name;
+    return gcsObjectName(item.firestoreId, data.fileName, data.companyId) !== item.name;
   }
 
   async function remove(item, url) {
