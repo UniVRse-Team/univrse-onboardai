@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { redactPersonalData } from '../../server/pii-redaction.mjs';
 import { gapDocument, groupGaps, normaliseTopic } from '../../server/knowledge-gaps.mjs';
+import { DEFAULT_COMPANY_ID } from '../../server/companies.mjs';
 
 test('emails are removed', () => {
   assert.equal(
@@ -72,7 +73,7 @@ test('a gap document holds the redacted question, topic, track, nearest source a
     topic: 'parking for [employee id]',
     track: 'intern',
     nearestSource: { title: 'Synthetic handbook', heading: 'Parking' },
-    companyId: 'univrse',
+    companyId: DEFAULT_COMPANY_ID,
     createdDay: '2026-10-16', // the company's calendar day (UTC+8), no time
   });
   assert.deepEqual(

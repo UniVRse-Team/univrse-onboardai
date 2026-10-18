@@ -18,6 +18,7 @@ import {
 } from '../../server/company-documents.mjs';
 import { createCompanyKnowledge } from '../../server/company-knowledge.mjs';
 import { workspaceLimits } from '../../server/workspace-limits.mjs';
+import { DEFAULT_COMPANY_ID } from '../../server/companies.mjs';
 
 const path = '/api/hr/company-knowledge/documents';
 const sha = (text) => createHash('sha256').update(text).digest('hex');
@@ -200,7 +201,7 @@ test('replace: 201 with the old entry gone, version 2, the old title kept and on
         status: 'active',
         version: 2,
         supersedes: oldId,
-        companyId: 'univrse',
+        companyId: DEFAULT_COMPANY_ID,
         objectName: `${newId}/badges-2026.txt`,
       },
     );

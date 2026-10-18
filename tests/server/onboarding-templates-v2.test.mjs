@@ -128,7 +128,7 @@ test('migration 003 and 005 upgrade older templates, are idempotent and never to
   assert.ok(lines.every((line) => !line.includes('contract ') && !line.includes('briefing')));
 });
 
-test('a stack where 001 and 002 already ran gets 003 to 012, which upgrade its templates', async () => {
+test('a stack where 001 and 002 already ran gets 003 to 013, which upgrade its templates', async () => {
   const firestore = new FakeFirestore();
   for (const track of tracks) firestore.write(`onboardingTemplates/${track}`, versionOne(track));
   for (const name of ['001_onboarding_templates.mjs', '002_quick_questions.mjs'])
@@ -145,6 +145,7 @@ test('a stack where 001 and 002 already ran gets 003 to 012, which upgrade its t
     '010_onboarding_templates_v8.mjs',
     '011_company_scope.mjs',
     '012_onboarding_templates_v9.mjs',
+    '013_rebrand_luna_digital.mjs',
   ]);
   assert.equal(firestore.read('onboardingTemplates/employee').version, templateVersion);
   assert.deepEqual((await migrateFirestore(firestore, { log: () => {} })).applied, []);

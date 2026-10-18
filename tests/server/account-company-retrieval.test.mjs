@@ -8,6 +8,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { startAccountsApp, fakeRetrieve } from './account-harness.mjs';
 import { createCompanyKnowledge } from '../../server/company-knowledge.mjs';
 import { createVertexDocumentSync, gcsObjectName } from '../../server/company-documents.mjs';
+import { DEFAULT_COMPANY_ID } from '../../server/companies.mjs';
 
 const handbook =
   'Dress Code\nStaff wear smart casual clothing from Monday to Thursday, and the synthetic team shirt on Friday.';
@@ -204,7 +205,7 @@ test('createVertexDocumentSync uploads to GCS + triggers documents:import and de
             mimeType: 'text/plain; charset=utf-8',
           },
           structData: {
-            companyId: 'univrse',
+            companyId: DEFAULT_COMPANY_ID,
           },
         },
       ],

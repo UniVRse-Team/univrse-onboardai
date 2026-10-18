@@ -23,6 +23,7 @@ import {
   presentAiProficiency,
   validateAiAssessmentInput,
 } from './ai-proficiency.mjs';
+import { DEFAULT_COMPANY_ID } from './companies.mjs';
 import {
   StepRuleError,
   briefedAt,
@@ -724,7 +725,7 @@ export function createOnboardingJourney({
     return (await onboardingOf(id, track)).onboarding;
   }
   async function employeeAiProficiency(id, actor = null, query = {}) {
-    const actorCompany = actor?.account?.companyId || 'univrse';
+    const actorCompany = actor?.account?.companyId || DEFAULT_COMPANY_ID;
     if (query?.companyId && String(query.companyId) !== actorCompany) {
       throw journeyErrors.aiProficiencyForbidden();
     }
