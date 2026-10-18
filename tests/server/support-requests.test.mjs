@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { startAccountsApp, syntheticProfile } from './account-harness.mjs';
 import { supportRequestId } from '../../server/support-requests.mjs';
+import { DEFAULT_COMPANY_ID } from '../../server/companies.mjs';
 
 async function withApp(options, check) {
   const app = await startAccountsApp(options);
@@ -142,7 +143,7 @@ test('confirming creates one request per answer, records a help observation and 
     assert.deepEqual(list.body.requests, [
       {
         id,
-        companyId: 'univrse',
+        companyId: DEFAULT_COMPANY_ID,
         assignedHrAccountId: null,
         messageId,
         question: 'What should I wear?',

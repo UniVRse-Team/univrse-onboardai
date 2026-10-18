@@ -450,7 +450,7 @@ export function createSupportRequests({
         .filter(
           (doc) =>
             doc.data().status === 'open' &&
-            (!companyId || (doc.data().companyId || 'univrse') === companyId),
+            (!companyId || (doc.data().companyId || DEFAULT_COMPANY_ID) === companyId),
         )
         .filter((doc) => known.has(doc.data().accountId)).length,
     });

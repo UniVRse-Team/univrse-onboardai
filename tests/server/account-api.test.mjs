@@ -639,9 +639,13 @@ test('account routes reject other origins and report database failures without d
 
 test('public company endpoint returns active company and rejects disabled or missing company', async () => {
   await withApp(async (app) => {
-    const res = await app.browser().get('/api/auth/companies/univrse');
+    const res = await app.browser().get('/api/auth/companies/luna-digital');
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body.company, { id: 'univrse', name: 'UniVRse', status: 'active' });
+    assert.deepEqual(res.body.company, {
+      id: 'luna-digital',
+      name: 'Luna Digital',
+      status: 'active',
+    });
 
     const missing = await app.browser().get('/api/auth/companies/nonexistent');
     assert.equal(missing.status, 404);
@@ -665,7 +669,7 @@ test('admin can create HR accounts and rename companies via CRUD endpoints', asy
     assert.equal(login.status, 200);
 
     // 1. Create HR account for company
-    const hrRes = await admin.post('/api/admin/companies/univrse/hr-accounts', {});
+    const hrRes = await admin.post('/api/admin/companies/luna-digital/hr-accounts', {});
     assert.equal(hrRes.status, 201);
     assert.match(hrRes.body.hrAccount.username, /^HR-[0-9]{4}$/);
     assert.equal(hrRes.body.hrAccount.status, 'active');
@@ -674,25 +678,25 @@ test('admin can create HR accounts and rename companies via CRUD endpoints', asy
     assert.equal(hrRes.body.company.defaultHr.username, hrRes.body.hrAccount.username);
 
     // List HR accounts
-    const listHr = await admin.get('/api/admin/companies/univrse/hr-accounts');
+    const listHr = await admin.get('/api/admin/companies/luna-digital/hr-accounts');
     assert.equal(listHr.status, 200);
     assert.ok(listHr.body.hrAccounts.some((a) => a.username === hrRes.body.hrAccount.username));
 
     // 2. Rename company (Update)
-    const renamed = await admin.patch('/api/admin/companies/univrse', {
-      name: 'UniVRse Global Tech',
+    const renamed = await admin.patch('/api/admin/companies/luna-digital', {
+      name: 'Luna Digital Tech',
     });
     assert.equal(renamed.status, 200);
-    assert.equal(renamed.body.company.name, 'UniVRse Global Tech');
+    assert.equal(renamed.body.company.name, 'Luna Digital Tech');
 
     // Verify company list reflects updated name (Read)
     const companies = await admin.get('/api/admin/companies');
     assert.equal(companies.status, 200);
-    const found = companies.body.companies.find((c) => c.id === 'univrse');
-    assert.equal(found.name, 'UniVRse Global Tech');
+    const found = companies.body.companies.find((c) => c.id === 'luna-digital');
+    assert.equal(found.name, 'Luna Digital Tech');
 
     // Reject empty company name
-    const invalidRename = await admin.patch('/api/admin/companies/univrse', { name: '   ' });
+    const invalidRename = await admin.patch('/api/admin/companies/luna-digital', { name: '   ' });
     assert.equal(invalidRename.status, 400);
     assert.equal(invalidRename.body.code, 'COMPANY_INVALID');
   });
@@ -703,9 +707,61 @@ test('HR reads company and profile details from /api/hr/company', async () => {
     const hr = await app.hrBrowser();
     const response = await hr.get('/api/hr/company');
     assert.equal(response.status, 200);
-    assert.equal(response.body.company.id, 'univrse');
-    assert.equal(response.body.company.name, 'UniVRse');
+    assert.equal(response.body.company.id, 'luna-digital');
+    assert.equal(response.body.company.name, 'Luna Digital');
     assert.equal(response.body.company.status, 'active');
     assert.ok(response.body.profile);
+  });
+});
+
+test('admin and hr sessions coexist in the same browser without conflict', async () => {
+  await withApp(async (app) => {
+    const hr = await app.hrBrowser();
+
+    // Create an admin account and sign in
+    await app.store.createAccount({
+      username: 'ADMIN-0001',
+      passwordHash: await app.hashing.hash('admin-pass-1'),
+      role: 'admin',
+      mustChangePassword: false,
+      action: 'admin_created',
+      at: app.clock.now(),
+      companyId: null,
+    });
+
+    const adminSignIn = await fetch(app.url + '/api/auth/sign-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'ADMIN-0001', password: 'admin-pass-1' }),
+    });
+    assert.equal(adminSignIn.status, 200);
+    const [adminCookieHeader] = adminSignIn.headers.getSetCookie();
+    assert.match(adminCookieHeader, /^onboardai_admin=/);
+
+    // Simulate same browser having both onboardai_admin and onboardai_account
+    const hrCookie = hr.cookieHeader;
+    const adminToken = adminCookieHeader.slice(
+      'onboardai_admin='.length,
+      adminCookieHeader.indexOf(';'),
+    );
+    const combinedCookie = `${hrCookie}; onboardai_admin=${adminToken}`;
+
+    // Admin scope returns the admin account
+    const adminSessionRes = await fetch(app.url + '/api/auth/session?scope=admin', {
+      headers: { cookie: combinedCookie },
+    });
+    assert.equal(adminSessionRes.status, 200);
+    const adminSessionData = await adminSessionRes.json();
+    assert.equal(adminSessionData.account.role, 'admin');
+    assert.equal(adminSessionData.account.username, 'ADMIN-0001');
+
+    // Account/HR scope returns the HR account without conflict
+    const hrSessionRes = await fetch(app.url + '/api/auth/session?scope=account', {
+      headers: { cookie: combinedCookie },
+    });
+    assert.equal(hrSessionRes.status, 200);
+    const hrSessionData = await hrSessionRes.json();
+    assert.equal(hrSessionData.account.role, 'hr');
+    assert.equal(hrSessionData.account.username, 'HR-0001');
   });
 });

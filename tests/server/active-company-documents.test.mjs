@@ -24,6 +24,7 @@ import {
 import { passagesFromSearch, searchRequestBody } from '../../server/vertex-ai-search.mjs';
 import { createCompanyRetriever } from '../../server/company-document-retriever.mjs';
 import { createCompanyKnowledge } from '../../server/company-knowledge.mjs';
+import { profileSourceTitle } from '../../server/company-profile.mjs';
 import { FakeFirestore } from './fake-firestore.mjs';
 import {
   chunkResult,
@@ -94,6 +95,7 @@ test('the snapshot holds active entries with a file name only, by URI and data s
     version: 1,
     connectedAt: badge.connectedAt,
     date: '2026-03-01',
+    companyId: 'luna-digital',
   });
   // A .md upload is stored (and indexed) as .txt.
   const md = summary({ id: leave.id, fileName: 'Notes.md' });
@@ -524,4 +526,48 @@ test('the search asks for 5 results unless the allowlisted path asks for 10', as
     bodies.map((body) => body.pageSize),
     [5, 10],
   );
+});
+
+test('multi-tenant: activeSnapshot correctly resolves URIs and vertex IDs for non-default companies', () => {
+  const acmeDoc = summary({
+    id: '99999999-9999-4999-8999-999999999999',
+    fileName: 'Acme Handbook.pdf',
+    connectedAt: '2026-10-15T00:00:00.000Z',
+    companyId: 'acme',
+  });
+  const acmeSnapshot = activeSnapshot([acmeDoc], bucket);
+  const expectedUri = `gs://${bucket}/companies/acme/${acmeDoc.id}/Acme Handbook.pdf`;
+  assert.ok(acmeSnapshot.byUri.has(expectedUri));
+  const entry = acmeSnapshot.byUri.get(expectedUri);
+  assert.equal(entry.id, acmeDoc.id);
+  assert.equal(entry.companyId, 'acme');
+
+  // Admitting passage for acme
+  const acmePassage = passage({
+    uri: expectedUri,
+    title: 'Acme Handbook.pdf',
+    text: 'Acme rules.',
+  });
+  const admitted = admitPassages([acmePassage], acmeSnapshot, { companyId: 'acme' });
+  assert.equal(admitted.length, 1);
+  assert.equal(admitted[0].documentId, acmeDoc.id);
+
+  // Cross-tenant passage with mismatched companyId is dropped
+  const crossAdmitted = admitPassages([acmePassage], acmeSnapshot, { companyId: 'other-corp' });
+  assert.equal(crossAdmitted.length, 0);
+});
+
+test('screenPassages: company profile passages are admitted without needing a companyDocuments entry', () => {
+  const profilePassage = {
+    title: profileSourceTitle,
+    heading: 'Overview',
+    text: 'Alya overview for Acme Corporation.',
+  };
+  const empty = activeSnapshot([], bucket);
+  const admitted = admitPassages([profilePassage], empty);
+  assert.equal(admitted.length, 1);
+  assert.equal(admitted[0].title, profileSourceTitle);
+  assert.equal(admitted[0].heading, 'Overview');
+  assert.equal(admitted[0].documentId, null);
+  assert.equal(admitted[0].date, null);
 });

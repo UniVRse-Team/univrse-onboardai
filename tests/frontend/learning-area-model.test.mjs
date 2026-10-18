@@ -67,7 +67,8 @@ test('checklist mirrors saved steps: every area incl. Documentation, required co
     ['documentation', 'policies', 'team-support'],
   );
   assert.equal(model.done, 2);
-  assert.equal(model.total, 5);
+  // Optional tasks count too: 6 tasks, 5 of them required.
+  assert.equal(model.total, 6);
   assert.equal(model.percent, 40);
   // With the server's overall percent (as on My onboarding), that number is shown.
   assert.equal(checklistModel({ percent: 7, areas: [] }).percent, 7);
@@ -80,7 +81,7 @@ test('checklist mirrors saved steps: every area incl. Documentation, required co
       [false, true],
     ],
   );
-  assert.equal(team.total, 1);
+  assert.equal(team.total, 2);
   assert.equal(team.tasks[1].required, false);
   assert.deepEqual(checklistModel(null), {
     groups: [],
@@ -122,6 +123,34 @@ test('checklist current task skips done and waiting tasks; complete only when al
   const finished = build(['done', 'done']);
   assert.equal(finished.complete, true);
   assert.equal(finished.current, null);
+});
+
+test('checklist puts the optional Roles & Responsibilities task first in Role, Tools & AI Readiness', () => {
+  const onboarding = {
+    areas: [
+      {
+        id: 'role-tools',
+        title: 'R',
+        steps: [
+          { id: 'role-tools.ai-readiness-training', title: 'AI', status: 'todo', required: false },
+        ],
+      },
+    ],
+  };
+  const open = checklistModel(onboarding).groups[0];
+  assert.deepEqual(
+    open.tasks.map((t) => [t.id, t.title, t.required, t.done, t.state]),
+    [
+      ['role-tools.responsibilities', 'Roles & Responsibilities', false, false, 'Not Started'],
+      ['role-tools.ai-readiness-training', 'AI', false, false, 'Not Started'],
+    ],
+  );
+  // It is listed but not counted: only the AI Readiness task is.
+  assert.equal(open.total, 1);
+  const acknowledged = checklistModel(onboarding, {
+    responsibilities: { acknowledgedAt: '2026-10-15T01:00:00.000Z' },
+  }).groups[0].tasks[0];
+  assert.deepEqual([acknowledged.done, acknowledged.state], [true, 'Acknowledged']);
 });
 
 import { quizStage } from '../../src/portal/learning-area-model.mjs';

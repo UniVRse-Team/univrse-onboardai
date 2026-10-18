@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import express from 'express';
 import { startAccountsApp } from './account-harness.mjs';
 import {
   createMemorySubmissionFiles,
   createSubmissionFiles,
 } from '../../server/submission-files.mjs';
 import { validateSubmissionFile } from '../../server/document-submissions.mjs';
+import { createApiProxy } from '../../server/api-proxy.mjs';
+import { maxFileBytes } from '../../shared/document-submissions.mjs';
 import { pdf, docx } from './document-fixtures.mjs';
 const path = '/api/me/document-submissions';
 const hrPath = '/api/hr/document-submissions';
@@ -228,7 +231,7 @@ test('a saved document completes its task, a lost sync heals, and saved progress
     const hr = await app.hrBrowser();
     const { browser, employee } = await app.readyEmployee(hr);
     const id = employee.account.id;
-    const stepId = 'documentation.tax-id-documents';
+    const stepId = 'documentation.employee-information-form';
     const progress = `onboardingProgress/${id}`;
     const writeStep = (status, source) => {
       const current = app.firestore.read(progress) || { accountId: id, steps: {} };
@@ -241,7 +244,7 @@ test('a saved document completes its task, a lost sync heals, and saved progress
       });
     };
     const onboarding = async () => (await browser.get('/api/me/onboarding')).body;
-    // A brand-new employee: 0% and every task to do. Reading changes nothing.
+    // A brand-new employee: 0% in Documentation and every task to do. Reading changes nothing.
     const fresh = await onboarding();
     const documentation = fresh.areas.find((a) => a.id === 'documentation');
     assert.deepEqual([documentation.percent, documentation.done], [0, 0]);
@@ -301,5 +304,52 @@ test('only HR reviews, and the review states are one-way; none of it moves the e
     );
   } finally {
     await app.close();
+  }
+});
+
+test('the web proxy forwards employee document submissions up to 25 MB and keeps 413 FILE_TOO_LARGE', async () => {
+  const seen = [];
+  const proxy = createApiProxy({
+    apiUrl: 'https://api.example',
+    fetchImpl: async (url, init) => {
+      seen.push([url, init.body?.length]);
+      return new Response(JSON.stringify({ submission: { id: 'sub-1' } }), {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      });
+    },
+  });
+  const web = express().use('/api', proxy);
+  const server = await new Promise((resolve) => {
+    const listening = web.listen(0, '127.0.0.1', () => resolve(listening));
+  });
+  const targetUrl = `http://127.0.0.1:${server.address().port}${path}?type=Employment+Documents&title=Upload+your+Employee+Information+Form&stepId=documentation.employee-information-form`;
+  const post = (size, type = 'application/octet-stream') =>
+    fetch(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': type, 'X-File-Name': 'info.pdf' },
+      body: Buffer.alloc(size, 'x'),
+    });
+  try {
+    const issueSize = 143 * 1024;
+    const okIssue = await post(issueSize);
+    assert.equal(okIssue.status, 201);
+    assert.deepEqual(seen, [
+      [
+        `https://api.example${path}?type=Employment+Documents&title=Upload+your+Employee+Information+Form&stepId=documentation.employee-information-form`,
+        issueSize,
+      ],
+    ]);
+
+    const maxOk = await post(maxFileBytes);
+    assert.equal(maxOk.status, 201);
+
+    const big = await post(maxFileBytes + 1);
+    assert.deepEqual([big.status, (await big.json()).code], [413, 'FILE_TOO_LARGE']);
+
+    const json = await post(70 * 1024, 'application/json');
+    assert.deepEqual([json.status, (await json.json()).code], [413, 'REQUEST_TOO_LARGE']);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
   }
 });

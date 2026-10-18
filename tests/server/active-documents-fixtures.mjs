@@ -1,6 +1,7 @@
 // Synthetic company library entries and Vertex AI Search chunk results for the
 // retrieval allowlist tests (issue #79). No real bucket, data store or text.
 import { companyDocumentUri, vertexDocumentId } from '../../server/discovery-engine-documents.mjs';
+import { DEFAULT_COMPANY_ID } from '../../server/companies.mjs';
 
 // A companyDocuments summary as listSummaries() returns it.
 export const summary = ({
@@ -12,7 +13,8 @@ export const summary = ({
   version = 1,
   connectedAt = '2026-10-01T09:30:00.000Z',
   retiredAt = null,
-}) => ({ id, fileName, title, category, status, version, connectedAt, retiredAt });
+  companyId = DEFAULT_COMPANY_ID,
+}) => ({ id, fileName, title, category, status, version, connectedAt, retiredAt, companyId });
 
 // A store stand-in with listSummaries() only; `entries` may change between
 // reads, and `reads` counts them.

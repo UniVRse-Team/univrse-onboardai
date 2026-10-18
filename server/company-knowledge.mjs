@@ -4,6 +4,7 @@ import { companyDocumentErrors } from './company-documents.mjs';
 import { companyDocumentIdPattern } from './discovery-engine-documents.mjs';
 import { documentCategories, onboardingDocumentTopics } from './onboarding-document-topics.mjs';
 import { workspaceLimits } from './workspace-limits.mjs';
+import { DEFAULT_COMPANY_ID } from './companies.mjs';
 
 // Company knowledge for signed-in accounts (issues #32 and #35):
 //
@@ -139,7 +140,7 @@ export function createCompanyKnowledge({
       }),
       active.snapshot(),
     ]);
-    return active.admit(found, current);
+    return active.admit(found, current, { companyId: opts.companyId });
   }
 
   // Lists stored documents for the HR dashboard without exposing their text.
@@ -179,7 +180,7 @@ export function createCompanyKnowledge({
   // Stores a file read by readUploadedDocument ({ name, text, bytes, content? })
   // in the described area. Resolves to { id, duplicate: false, replaced: null }
   // or { id, duplicate: true, replaced: null }.
-  const add = (actorId, { category, name }, file, at, companyId = 'univrse') =>
+  const add = (actorId, { category, name }, file, at, companyId = DEFAULT_COMPANY_ID) =>
     afterChange(async () => {
       const added = await documents.add(
         {
@@ -201,7 +202,14 @@ export function createCompanyKnowledge({
   // `audit(detail, during)` runs the change inside the company_document_replaced
   // audit row. Resolves to { id: newId, duplicate: false, replaced: { id,
   // cleanup } } or { id: replaces, duplicate: true, replaced: null }.
-  const replace = (actorId, { category, name, replaces }, file, at, audit, companyId = 'univrse') =>
+  const replace = (
+    actorId,
+    { category, name, replaces },
+    file,
+    at,
+    audit,
+    companyId = DEFAULT_COMPANY_ID,
+  ) =>
     afterChange(() =>
       documents.replace(
         replaces,

@@ -473,9 +473,9 @@ export function HelpConfirmation({ confirmedHelpAt, onRecords }) {
 
 // An area-level activity (no task of its own): its status and one primary button
 // that opens the activity page.
-export function ActivityLauncher({ title, status, done, label, onOpen }) {
+export function ActivityLauncher({ id, title, status, done, label, onOpen }) {
   return (
-    <section className="activity-card">
+    <section className="activity-card" id={id} tabIndex={id ? -1 : undefined}>
       <header>
         <strong>{title}</strong>
         <span className={'fp-badge ' + (done ? 'done' : '')}>{status}</span>

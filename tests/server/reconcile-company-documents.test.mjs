@@ -1049,3 +1049,125 @@ test('--show-names adds the object name to item lines only; credentials headers 
       call.url.includes('discoveryengine') ? 'demo-project' : null,
     );
 });
+
+test('multi-tenant company library: tenant documents reconcile with zero drift and handle tenant drift/apply', async () => {
+  const bucket = productionEnv.DOCS_BUCKET;
+  const companyId = 'demo-seri-bayu';
+  const docId1 = uuid(10);
+  const docId2 = uuid(20);
+  const orphanDocId = uuid(30);
+
+  const file1 = '01 Handbook.docx';
+  const file2 = '02 Guidelines.pdf';
+  const orphanFile = '03 Old.docx';
+
+  const name1 = `companies/${companyId}/${docId1}/${file1}`;
+  const name2 = `companies/${companyId}/${docId2}/${file2}`;
+  const orphanName = `companies/${companyId}/${orphanDocId}/${orphanFile}`;
+
+  const uri1 = uriIn(bucket, name1);
+  const uri2 = uriIn(bucket, name2);
+  const orphanUri = uriIn(bucket, orphanName);
+
+  // 1. Clean multi-tenant library with 2 tenant entries: 0 drift
+  const cleanCloud = fakeCloud({
+    bucket,
+    entries: [
+      {
+        id: docId1,
+        fileName: file1,
+        title: 'Handbook',
+        category: 'policies',
+        companyId,
+        connectedAt: ago(60),
+      },
+      {
+        id: docId2,
+        fileName: file2,
+        title: 'Guidelines',
+        category: 'policies',
+        companyId,
+        connectedAt: ago(60),
+      },
+    ],
+    objects: [
+      { name: name1, timeCreated: ago(60) },
+      { name: name2, timeCreated: ago(60) },
+    ],
+    docs: [
+      { id: sha32(uri1), uri: uri1, indexTime: ago(59) },
+      { id: sha32(uri2), uri: uri2, indexTime: ago(59) },
+    ],
+  });
+
+  const cleanResult = await reconcile(cleanCloud, { env: productionEnv });
+  assert.equal(cleanResult.exitCode, 0);
+  assert.deepEqual(cleanResult.items, []);
+  assert.deepEqual(countsOf(cleanResult.summary), {
+    ...zeros,
+    firestore: 2,
+    gcsLive: 2,
+    vertex: 2,
+  });
+
+  // 2. Multi-tenant drift:
+  // - orphanDocId exists in GCS & Vertex, but not in Firestore -> gcs_orphan & vertex_orphan
+  // - docId1 has missing Vertex doc -> missing_index
+  const driftCloud = fakeCloud({
+    bucket,
+    entries: [
+      {
+        id: docId1,
+        fileName: file1,
+        title: 'Handbook',
+        category: 'policies',
+        companyId,
+        connectedAt: ago(60),
+      },
+      {
+        id: docId2,
+        fileName: file2,
+        title: 'Guidelines',
+        category: 'policies',
+        companyId,
+        connectedAt: ago(60),
+      },
+    ],
+    objects: [
+      { name: name1, timeCreated: ago(60) },
+      { name: name2, timeCreated: ago(60) },
+      { name: orphanName, timeCreated: ago(60) },
+    ],
+    docs: [
+      { id: sha32(uri2), uri: uri2, indexTime: ago(59) },
+      { id: sha32(orphanUri), uri: orphanUri, indexTime: ago(59) },
+    ],
+  });
+
+  const report = await reconcile(driftCloud, { env: productionEnv });
+  assert.equal(report.exitCode, 0);
+  assert.equal(report.summary.gcsOrphans, 1);
+  assert.equal(report.summary.vertexOrphans, 1);
+  assert.equal(report.summary.missingIndex, 1);
+  assert.equal(report.summary.unrepaired, 3);
+
+  // 3. Apply resolves the drift
+  const applied = await reconcile(driftCloud, { argv: ['--apply'], env: productionEnv });
+  assert.equal(applied.exitCode, 0);
+  assert.deepEqual(
+    [
+      applied.summary.deletedGcs,
+      applied.summary.deletedVertex,
+      applied.summary.reimported,
+      applied.summary.unrepaired,
+    ],
+    [1, 1, 1, 0],
+  );
+
+  // Verify re-check in stillOrphan requested companyId mask
+  const rechecks = driftCloud.calls.filter(
+    (c) => c.method === 'GET' && c.url.includes(`/companyDocuments/${orphanDocId}?`),
+  );
+  assert.ok(rechecks.length > 0);
+  assert.ok(rechecks[0].url.includes('mask.fieldPaths=companyId'));
+});

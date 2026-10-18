@@ -11,6 +11,7 @@ import { createApiProxy } from '../../server/api-proxy.mjs';
 import { onboardingDocumentTopics } from '../../server/onboarding-document-topics.mjs';
 import { workspaceLimits } from '../../server/workspace-limits.mjs';
 import { interleavePassages, titleFromFileName } from '../../server/company-knowledge.mjs';
+import { DEFAULT_COMPANY_ID } from '../../server/companies.mjs';
 
 const path = '/api/hr/company-knowledge/documents';
 const handbook = 'Dress Code Staff wear smart casual clothing from Monday to Thursday.';
@@ -135,7 +136,7 @@ test('HR uploads PDF, DOCX, text and Markdown files; only text and metadata are 
         connectedAt: 'iso',
         status: 'active',
         version: 1,
-        companyId: 'univrse',
+        companyId: DEFAULT_COMPANY_ID,
         objectName: `${ids[1]}/handbook.docx`,
       },
     );
@@ -699,7 +700,7 @@ test('HR uploads and deletes sync directly to GCS and trigger Vertex AI Search d
                 mimeType: 'text/plain; charset=utf-8',
               },
               structData: {
-                companyId: 'univrse',
+                companyId: DEFAULT_COMPANY_ID,
               },
             },
           ],

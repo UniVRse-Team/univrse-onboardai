@@ -222,7 +222,7 @@ const firestoreBase = ({ firestoreProject, database }) =>
 export const firestoreRunQueryUrl = (config) => `${firestoreBase(config)}:runQuery`;
 export const firestoreDocumentUrl = (config, id) =>
   `${firestoreBase(config)}/${companyDocumentCollection}/${encodeURIComponent(id)}` +
-  '?mask.fieldPaths=status&mask.fieldPaths=fileName';
+  '?mask.fieldPaths=status&mask.fieldPaths=fileName&mask.fieldPaths=companyId';
 
 // The select-only query: the summary fields, never the legacy `text`.
 export const summaryQuery = () => ({
@@ -387,7 +387,15 @@ export function planReconciliation({ firestore = [], gcs = [], vertex = [], opti
   const expected = new Map();
   for (const entry of firestore)
     if (entry.status === 'active' && entry.fileName)
-      expected.set(companyDocumentUri({ bucket, id: entry.id, fileName: entry.fileName }), entry);
+      expected.set(
+        companyDocumentUri({
+          bucket,
+          id: entry.id,
+          fileName: entry.fileName,
+          companyId: entry.companyId,
+        }),
+        entry,
+      );
   const live = new Map(gcs.map((object) => [object.name, object]));
   const bucketPrefix = `gs://${bucket}/`;
   const objectOf = (uri) =>
@@ -447,7 +455,7 @@ export function planReconciliation({ firestore = [], gcs = [], vertex = [], opti
     if (
       entry?.status === 'active' &&
       entry.fileName &&
-      gcsObjectName(entry.id, entry.fileName) === object.name
+      gcsObjectName(entry.id, entry.fileName, entry.companyId) === object.name
     )
       continue;
     const ref = { firestoreId: namespaceId, name: object.name, uri };
@@ -464,7 +472,7 @@ export function planReconciliation({ firestore = [], gcs = [], vertex = [], opti
       continue;
     }
     if (!entry.fileName) continue;
-    const objectName = gcsObjectName(entry.id, entry.fileName);
+    const objectName = gcsObjectName(entry.id, entry.fileName, entry.companyId);
     const uri = `${bucketPrefix}${objectName}`;
     Object.assign(ref, { name: objectName, uri });
     if (!live.has(objectName)) add(entryYoung(entry) ? 'pending' : 'missing_object', ref);
@@ -518,7 +526,7 @@ export async function executePlan({
     if (!response.ok) return response.status;
     const { data } = decodeFirestoreDocument(await response.json());
     if (data.status === 'retired' || !data.fileName) return true;
-    return gcsObjectName(item.firestoreId, data.fileName) !== item.name;
+    return gcsObjectName(item.firestoreId, data.fileName, data.companyId) !== item.name;
   }
 
   async function remove(item, url) {

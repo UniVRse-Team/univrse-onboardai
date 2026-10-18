@@ -8,6 +8,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { startAccountsApp, fakeRetrieve } from './account-harness.mjs';
 import { createCompanyKnowledge } from '../../server/company-knowledge.mjs';
 import { createVertexDocumentSync, gcsObjectName } from '../../server/company-documents.mjs';
+import { DEFAULT_COMPANY_ID } from '../../server/companies.mjs';
 
 const handbook =
   'Dress Code\nStaff wear smart casual clothing from Monday to Thursday, and the synthetic team shirt on Friday.';
@@ -204,7 +205,7 @@ test('createVertexDocumentSync uploads to GCS + triggers documents:import and de
             mimeType: 'text/plain; charset=utf-8',
           },
           structData: {
-            companyId: 'univrse',
+            companyId: DEFAULT_COMPANY_ID,
           },
         },
       ],
@@ -337,6 +338,66 @@ test('when Vertex AI Search returns no matches, runtime chat does not fall back 
       assert.equal(result.status, 200, result.text);
       assert.equal(result.body.matched, false);
       assert.deepEqual(result.body.passages, []);
+    },
+  );
+});
+
+test('multi-tenant: employee of a new company retrieves and admits that company documentation in chat', async () => {
+  const bucket = 'test-proj-onboardai-docs';
+  let uploadedId = null;
+  await withApp(
+    {
+      mode: 'document-search',
+      env: { DOCS_BUCKET: bucket },
+      companyRetrieve: async (query, options) => {
+        if (options?.companyId === 'acme' && uploadedId) {
+          return [
+            {
+              title: 'Acme Handbook.txt',
+              heading: 'Remote Work',
+              text: 'Acme staff may work remotely on Fridays.',
+              uri: `gs://${bucket}/companies/acme/${uploadedId}/Acme Handbook.txt`,
+              vertexId: 'acme-hash-123',
+            },
+          ];
+        }
+        return [];
+      },
+    },
+    async (app) => {
+      await app.store.createCompany(null, { ids: ['acme'], name: 'Acme Corp' }, new Date(), [
+        { name: 'People & Culture', prefix: 'AC' },
+      ]);
+      await app.store.createAccount({
+        username: 'ACME-HR',
+        passwordHash: await app.hashing.hash('acme-hr-pass-1'),
+        role: 'hr',
+        mustChangePassword: false,
+        action: 'hr_account_created',
+        at: new Date(),
+        companyId: 'acme',
+      });
+      const acmeHr = app.browser();
+      await acmeHr.signIn('ACME-HR', 'acme-hr-pass-1');
+
+      const up = await acmeHr.upload(
+        '/api/hr/company-knowledge/documents?category=policies',
+        Buffer.from('Acme staff may work remotely on Fridays.'),
+        'Acme Handbook.txt',
+      );
+      assert.equal(up.status, 201, up.text);
+      uploadedId = up.body.id;
+
+      const { browser: acmeEmployee } = await app.readyEmployee(acmeHr);
+      const chat = (await acmeEmployee.post('/api/conversations')).body;
+      const res = await ask(acmeEmployee, chat.id, 'Can I work remotely?');
+      assert.equal(res.status, 200, res.text);
+      assert.equal(res.body.matched, true);
+      assert.deepEqual(
+        res.body.passages.map((p) => p.title),
+        ['Acme Handbook.txt'],
+      );
+      assert.equal(res.body.source, 'Company documents: Acme Handbook.txt');
     },
   );
 });

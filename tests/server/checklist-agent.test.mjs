@@ -20,11 +20,13 @@ const ask = (browser, conversationId, question, requestId = randomUUID()) =>
 function fakeAgent(app) {
   const sessions = new Map();
   const calls = [];
+  // The built-in checklist has no buddy or chat-group step any more: those report
+  // words stand in for the one self step the agent can still mark (People & Support).
   const steps = [
-    ['buddy', 'team-support.company-chat-groups', 'done'],
-    ['chat', 'team-support.company-chat-groups', 'done'],
+    ['buddy', 'team-support.working-preferences', 'done'],
+    ['chat', 'team-support.working-preferences', 'done'],
     ['ai practice', 'role-tools.ai-readiness-training', 'done'],
-    ['contract', 'documentation.tax-id-documents', 'submitted'],
+    ['contract', 'documentation.employee-information-form', 'submitted'],
     ['handbook', 'policies.employee-handbook', null],
     ['mystery', 'nonsense.step', 'done'],
   ];
@@ -200,15 +202,18 @@ test('"I\'ve met my buddy today": a proposal, nothing written until Approve, the
     assert.deepEqual(
       [action.stepId, action.stepTitle, action.areaTitle, action.newStatus, action.status],
       [
-        'team-support.company-chat-groups',
-        'Join company chat groups',
+        'team-support.working-preferences',
+        'Share your working preferences or support needs (optional)',
         'People & Workplace Support',
         'done',
         'pending',
       ],
     );
     assert.equal(action.expiresAt, new Date(app.clock.now().getTime() + 30 * MINUTE).toISOString());
-    assert.equal(answered.body.answer, 'Shall I mark “Join company chat groups” as done?');
+    assert.equal(
+      answered.body.answer,
+      'Shall I mark “Share your working preferences or support needs (optional)” as done?',
+    );
     assert.deepEqual(
       [answered.body.coverage, answered.body.category, answered.body.source],
       [null, 'onboarding', 'Your onboarding checklist'],
@@ -250,10 +255,10 @@ test('"I\'ve met my buddy today": a proposal, nothing written until Approve, the
     assert.deepEqual(approved.body.action, { ...action, status: 'approved' });
     assert.equal(approved.body.reply, 'Done! Your next step is to sign your employment contract.');
     const chatGroup = approved.body.onboarding.areas[4].steps.find(
-      (s) => s.id === 'team-support.company-chat-groups',
+      (s) => s.id === 'team-support.working-preferences',
     );
     assert.deepEqual([chatGroup.status, chatGroup.source], ['done', 'alya-agent']);
-    assert.equal(approved.body.onboarding.nextStep.id, 'documentation.tax-id-documents');
+    assert.equal(approved.body.onboarding.nextStep.id, 'documentation.employee-information-form');
     assert.equal(app.firestore.read(`agentActions/${action.id}`).status, 'approved');
     // The reply is a new assistant message; the proposal shows its status.
     opened = (await browser.get(`/api/conversations/${chat.id}`)).body.messages;
@@ -306,7 +311,7 @@ test('a document step is never marked through chat; a policy step points to the 
     assert.match(contract.answer, /upload your document/i);
     assert.match(contract.answer, /submitted once it is saved/);
     const saved = app.firestore.read(`onboardingProgress/${employee.account.id}`);
-    assert.equal(saved?.steps?.['documentation.tax-id-documents']?.status, undefined);
+    assert.equal(saved?.steps?.['documentation.employee-information-form']?.status, undefined);
 
     const handbook = (await ask(browser, chat.id, "I've read the handbook")).body;
     assert.equal(handbook.proposedAction, null);
@@ -409,7 +414,7 @@ test('document-search: a conservative heuristic routes completion reports only',
     assert.equal(searched.body.proposedAction, null);
     assert.equal(agent.calls.length, 0);
     const reported = await ask(browser, chat.id, "I've met my buddy today");
-    assert.equal(reported.body.proposedAction.stepId, 'team-support.company-chat-groups');
+    assert.equal(reported.body.proposedAction.stepId, 'team-support.working-preferences');
     assert.equal(agent.calls[0][1].text, "I've met my buddy today");
     const opened = (await browser.get(`/api/conversations/${chat.id}`)).body.messages;
     assert.equal(opened[3].proposedAction.status, 'pending');

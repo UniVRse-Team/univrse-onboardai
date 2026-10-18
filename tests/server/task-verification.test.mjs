@@ -222,11 +222,10 @@ test('Area 2: every activity (matching and questions) records attempts and compl
   });
 });
 
-test('Area 3: checklist is an acknowledgement; tool access completes only after coordinator confirmation', async () => {
+test('Area 3: the checklist is an acknowledgement; the AI self-assessment completes its optional step', async () => {
   await withApp(async (app) => {
     const hr = await app.hrBrowser();
-    const { browser, employee } = await app.readyEmployee(hr);
-    const toolId = 'role-tools.gsheet-account';
+    const { browser } = await app.readyEmployee(hr);
 
     const partial = await post(browser, 'role-tools', 'responsibilities', { checkedItems: ['0'] });
     assert.equal(partial.status, 400);
@@ -236,30 +235,7 @@ test('Area 3: checklist is an acknowledgement; tool access completes only after 
     });
     assert.equal(checklist.status, 200);
 
-    assert.equal(
-      (await post(browser, 'role-tools', 'tool-access', { workEmail: 'x', toolId })).status,
-      400,
-    );
-    const wrongStep = await post(browser, 'role-tools', 'tool-access', {
-      workEmail: 'alex@univrse.example',
-      toolId: 'role-tools.email-signature',
-    });
-    assert.equal(wrongStep.status, 400);
-
-    const request = await post(browser, 'role-tools', 'tool-access', {
-      workEmail: 'alex@univrse.example',
-      toolId,
-    });
-    assert.equal(request.body.workflowStatus, 'awaiting_confirmation');
-    assert.notEqual((await stepOf(browser, 'role-tools', toolId)).status, 'done');
-
-    const url = `/api/hr/employees/${employee.account.id}/task-verifications/tool-access/${toolId}`;
-    assert.ok([401, 403].includes((await browser.post(url, {})).status));
-    assert.equal((await hr.post(url, {})).status, 200);
-    assert.equal((await stepOf(browser, 'role-tools', toolId)).status, 'done');
-
     const saved = (await browser.get('/api/me/task-verifications')).body.verifications.roleTools;
-    assert.equal(saved.tools[toolId].status, 'confirmed');
     assert.ok(saved.responsibilities.acknowledgedAt);
 
     // The AI self-assessment is separate from setup tasks and is not pass/fail.
@@ -277,7 +253,7 @@ test('Area 3: checklist is an acknowledgement; tool access completes only after 
   });
 });
 
-test('Area 4: routing scenarios are graded, recorded and do not claim chat groups were joined', async () => {
+test('Area 4: routing scenarios are graded and recorded, and no People & Support step is marked done', async () => {
   await withApp(async (app) => {
     const { browser } = await app.readyEmployee(await app.hrBrowser());
     const questions = routingQuestions(SUPPORT_ROUTING_SCENARIOS);
@@ -293,8 +269,14 @@ test('Area 4: routing scenarios are graded, recorded and do not claim chat group
     const help = await post(browser, 'team-support', 'confirm-help', {});
     assert.ok(help.body.confirmedHelpAt);
 
-    for (const id of ['team-support.company-chat-groups', 'team-support.department-chat-group'])
-      assert.notEqual((await stepOf(browser, 'team-support', id)).status, 'done');
+    // The only People & Support task left is the optional working preferences.
+    const teamSteps = (await browser.get('/api/me/onboarding')).body.areas.find(
+      (a) => a.id === 'team-support',
+    ).steps;
+    assert.deepEqual(
+      teamSteps.map((step) => step.id),
+      ['team-support.working-preferences'],
+    );
     const optional = await stepOf(browser, 'team-support', 'team-support.working-preferences');
     assert.equal(optional.required, false);
 
@@ -327,21 +309,20 @@ test('Optional working preferences are private, optional and never affect progre
   });
 });
 
-test('A direct request cannot complete or reopen a quiz-proven or coordinator-verified step', async () => {
+test('A direct request cannot complete or reopen a quiz-proven step', async () => {
   await withApp(async (app) => {
     const { browser } = await app.readyEmployee(await app.hrBrowser());
-    for (const id of ['alignment.mission-values', 'role-tools.gsheet-account']) {
+    for (const id of ['alignment.mission-values']) {
       for (const action of ['complete', 'reopen']) {
         const res = await browser.post(`/api/me/onboarding/steps/${id}/${action}`);
         assert.equal(res.status, 409);
         assert.equal(res.body.code, 'VERIFICATION_REQUIRED');
       }
     }
-    // a plain setup task is still employee-confirmed
-    await browser.post('/api/me/onboarding/steps/role-tools.email-signature/briefing', {
-      completion: 'read',
-    });
-    const ok = await browser.post('/api/me/onboarding/steps/role-tools.email-signature/complete');
+    // an optional task is still employee-confirmed
+    const ok = await browser.post(
+      '/api/me/onboarding/steps/team-support.working-preferences/complete',
+    );
     assert.equal(ok.status, 200);
   });
 });

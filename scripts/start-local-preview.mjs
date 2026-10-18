@@ -21,8 +21,11 @@ export async function startLocalPreview({
   const { avatarRoute } = await import('../server/avatar-route.mjs');
   const { createServer: createViteServer } = await import('vite');
   const { createMemorySubmissionFiles } = await import('../server/submission-files.mjs');
+  const { previewModels, previewRetrieve } = await import('./preview-chat.mjs');
   const fixture = await startAccountsApp({
     mode: 'gemini-chat',
+    models: previewModels,
+    companyRetrieve: previewRetrieve,
     submissionFiles: createMemorySubmissionFiles(),
   });
   const hr = await fixture.hrBrowser();
@@ -53,11 +56,16 @@ export async function startLocalPreview({
   app.use('/api', async (req, res, next) => {
     // Full-page preview links select the role independently for each tab.
     const path = req.headers.referer ? new URL(req.headers.referer).pathname : '/onboarding';
-    const browser = path.startsWith('/admin')
-      ? admin
-      : path === '/hr' || path.startsWith('/hr/')
-        ? hr
-        : employee;
+    const isExplicitAdmin =
+      req.query.scope === 'admin' || req.headers['x-session-scope'] === 'admin';
+    const isExplicitAccount =
+      req.query.scope === 'account' || req.headers['x-session-scope'] === 'account';
+    const browser =
+      isExplicitAdmin || path.startsWith('/admin')
+        ? admin
+        : isExplicitAccount || path === '/hr' || path.startsWith('/hr/')
+          ? hr
+          : employee;
     // Preview sessions are fixed; never invalidate them through login controls.
     if (req.path.startsWith('/auth/') && req.method !== 'GET')
       return res
@@ -65,7 +73,7 @@ export async function startLocalPreview({
         .json({ error: 'Local preview uses temporary accounts. Use npm run dev to test sign-in.' });
     try {
       const headers = { cookie: browser.cookieHeader };
-      for (const key of ['content-type', 'x-file-name', 'x-onboarding-area'])
+      for (const key of ['content-type', 'x-file-name', 'x-onboarding-area', 'x-session-scope'])
         if (req.headers[key]) headers[key] = req.headers[key];
       const response = await fetch(fixture.url + req.originalUrl, {
         method: req.method,
