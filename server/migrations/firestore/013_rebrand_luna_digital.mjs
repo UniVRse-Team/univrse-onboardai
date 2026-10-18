@@ -14,7 +14,7 @@ export async function up({ firestore, log }) {
 
     for (const doc of snapshot.docs) {
       const data = doc.data();
-      if (data?.companyId !== 'univrse') continue;
+      if (data?.companyId !== 'univrse' && data?.companyId !== 'luna-didital') continue;
 
       batch.update(doc.ref, { companyId: DEFAULT_COMPANY_ID });
       batchCount++;
