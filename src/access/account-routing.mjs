@@ -2,7 +2,7 @@
 
 // An admin lands on the platform dashboard, HR on their company workspace (/hr/:companyId), and an
 // employee on Ask Alya (/alya).
-export const defaultCompanyId = 'univrse';
+export const defaultCompanyId = 'luna-digital';
 export const hrCompanyPath = (companyId) =>
   '/hr/' + encodeURIComponent(companyId || defaultCompanyId);
 

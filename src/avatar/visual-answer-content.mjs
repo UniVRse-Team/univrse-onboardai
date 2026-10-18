@@ -126,7 +126,7 @@ function visualSubject(text) {
     };
   if (
     /\b(virtual reality|augmented reality|gamification|metaverses?)\b/i.test(text) &&
-    /\b(focus|company|UniVRse|develop|speciali[sz])\b/i.test(text)
+    /\b(focus|company|UniVRse|Luna Digital|Luna|develop|speciali[sz])\b/i.test(text)
   )
     return { scene: 'company', title: 'What the company does' };
   if (/\b(virtual|3D)\b/i.test(text) && /\b(events?|world)\b/i.test(text))
@@ -217,8 +217,14 @@ export function simpleAnswer(text) {
       /^Be ready to participate in the round table discussion by bringing up any (.+)\.$/i,
       'Bring $1 to the round table discussion.',
     )
-    .replace(/^As part of its business activities, UniVRse provides /, 'UniVRse provides ')
-    .replace(/^UniVRse Interactive Sdn Bhd focuses on /, 'UniVRse focuses on ');
+    .replace(
+      /^As part of its business activities, (UniVRse|Luna Digital) provides /i,
+      '$1 provides ',
+    )
+    .replace(
+      /^(UniVRse Interactive Sdn Bhd|Luna Digital Sdn Bhd|Luna Digital) focuses on /i,
+      '$1 focuses on ',
+    );
 }
 
 export function presentationGuide(message) {

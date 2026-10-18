@@ -14,6 +14,7 @@ import {
   withFictionalOpening,
 } from '../../server/gemini-chat-workflow.mjs';
 import { supportRequest } from '../../server/answer-style-preferences.mjs';
+import { DEFAULT_COMPANY_ID } from '../../server/companies.mjs';
 
 async function withApp(options, check) {
   const app = await startAccountsApp(options);
@@ -283,7 +284,7 @@ test('knowledge gaps: unanswered onboarding questions are logged without names, 
         topic: 'parking',
         track: 'intern',
         nearestSource: null,
-        companyId: 'univrse',
+        companyId: DEFAULT_COMPANY_ID,
         createdDay: '2026-10-15',
       });
       assert.deepEqual(docs.find((doc) => doc.topic === 'gym').nearestSource, {

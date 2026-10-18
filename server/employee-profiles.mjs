@@ -4,6 +4,7 @@ import { createStorageCall } from './firestore-client.mjs';
 import { departments as seedDepartments } from './departments.mjs';
 import { journeyCollections } from './onboarding-collections.mjs';
 import { tracks } from './onboarding-content.mjs';
+import { DEFAULT_COMPANY_ID } from './companies.mjs';
 
 // Each employee's personal profile is one Firestore document,
 // employeeProfiles/{accountId}. Only HR writes it; an employee reads their own.
@@ -274,7 +275,7 @@ export function createProfileStore({
       }
       return found;
     },
-    write: (accountId, profile, updatedBy, at, companyId = 'univrse') =>
+    write: (accountId, profile, updatedBy, at, companyId = DEFAULT_COMPANY_ID) =>
       guarded('save employee profile', async () => {
         const stored = { ...profile, updatedAt: at.toISOString(), updatedBy, companyId };
         await ref(await database(), accountId).set(stored);

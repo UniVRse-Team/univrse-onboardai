@@ -17,6 +17,7 @@ test('migrations are plain SQL files, applied once and recorded in schema_migrat
     '003_employee_id_counters.sql',
     '004_departments.sql',
     '005_companies.sql',
+    '006_company_luna_digital.sql',
   ];
   assert.deepEqual(migrationFiles(), all);
   const sql = readFileSync(join(migrationsDirectory, '001_accounts.sql'), 'utf8');
