@@ -274,10 +274,10 @@ export default function AdminCompanyDetail({ companyId, navigate }) {
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               Company link:{' '}
               <a
-                href={`/admin/companies/${company.id}`}
+                href={`/companies/${company.id}`}
                 style={{ color: '#256a91', textDecoration: 'underline' }}
               >
-                /admin/companies/{company.id}
+                /companies/{company.id}
               </a>
               <button
                 type="button"
@@ -294,7 +294,7 @@ export default function AdminCompanyDetail({ companyId, navigate }) {
                 onClick={async () => {
                   try {
                     await navigator.clipboard.writeText(
-                      `${window.location.origin}/admin/companies/${company.id}`,
+                      `${window.location.origin}/companies/${company.id}`,
                     );
                     setDetailCopyFeedback('Copied!');
                     setTimeout(() => setDetailCopyFeedback(''), 2500);

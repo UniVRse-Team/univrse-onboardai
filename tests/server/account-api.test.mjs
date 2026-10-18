@@ -636,3 +636,15 @@ test('account routes reject other origins and report database failures without d
     );
   });
 });
+
+test('public company endpoint returns active company and rejects disabled or missing company', async () => {
+  await withApp(async (app) => {
+    const res = await app.browser().get('/api/auth/companies/univrse');
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.company, { id: 'univrse', name: 'UniVRse', status: 'active' });
+
+    const missing = await app.browser().get('/api/auth/companies/nonexistent');
+    assert.equal(missing.status, 404);
+    assert.equal(missing.body.code, 'COMPANY_NOT_FOUND');
+  });
+});

@@ -1,7 +1,7 @@
 import express from 'express';
 import { mountDocumentSubmissionRoutes } from './document-submission-routes.mjs';
 import { ChatError } from './chat-errors.mjs';
-import { accountErrors, autofillErrors } from './account-errors.mjs';
+import { accountErrors, autofillErrors, companyErrors } from './account-errors.mjs';
 import { companyKnowledgeRequestErrors } from './company-knowledge.mjs';
 import { readUploadedDocument } from './read-uploaded-document.mjs';
 import { workspaceLimits } from './workspace-limits.mjs';
@@ -139,6 +139,11 @@ export function mountAccountRoutes(
     const result = await accounts.changePassword(req.accountSession, req.body);
     setSession(req, res, result);
     res.json({ account: result.account });
+  });
+  auth.get('/companies/:companyId', async (req, res) => {
+    const { company } = await accounts.getCompany(req.params.companyId);
+    if (company.status === 'disabled') throw companyErrors.disabled();
+    res.json({ company: { id: company.id, name: company.name, status: company.status } });
   });
 
   const me = express.Router();

@@ -10,8 +10,14 @@ import EmployeeFootprint from './EmployeeFootprint';
 import ActivityPage from './ActivityPage';
 import { activityIdFromPath } from './activity-model.mjs';
 import useAccountSession from '../access/use-account-session';
-import { landingPath, routeDecision, isAdminArea } from '../access/account-routing.mjs';
+import {
+  landingPath,
+  routeDecision,
+  isAdminArea,
+  parseCompanyTenantPath,
+} from '../access/account-routing.mjs';
 import AdminPortal from '../admin/AdminPortal';
+import AdminSignIn from '../admin/AdminSignIn';
 import { readNotes, writeNotes } from './support-notes.mjs';
 import './website.css';
 
@@ -479,17 +485,30 @@ export default function OnboardingWebsite() {
         }}
       />
     );
-  if (['/', '/login', '/signup'].includes(path))
+  const tenant = parseCompanyTenantPath(path);
+  if (['/', '/login', '/signup'].includes(path) || tenant)
     return (
       <LoginPage
         accounts={session.accounts === true}
         onSignIn={session.signIn}
+        onSignOut={session.signOut}
         sessionNotice={session.notice}
         navigate={navigate}
+        tenantCompanyId={tenant?.companyId || null}
       />
     );
   if (path === '/hr') return <HrWorkspace account={account} onSignOut={session.signOut} />;
-  if (account?.role === 'admin' || isAdminArea(path))
+  if (isAdminArea(path)) {
+    if (!account) {
+      return (
+        <AdminSignIn onSignIn={session.signIn} onSignOut={session.signOut} navigate={navigate} />
+      );
+    }
+    return (
+      <AdminPortal account={account} path={path} navigate={navigate} onSignOut={session.signOut} />
+    );
+  }
+  if (account?.role === 'admin')
     return (
       <AdminPortal account={account} path={path} navigate={navigate} onSignOut={session.signOut} />
     );

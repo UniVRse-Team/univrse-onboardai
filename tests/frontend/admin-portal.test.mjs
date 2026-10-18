@@ -32,6 +32,8 @@ import {
   parseAdminPath,
   adminCompanyPath,
   isAdminArea,
+  parseCompanyTenantPath,
+  companyTenantPath,
 } from '../../src/access/account-routing.mjs';
 
 test('parseAdminPath parses dashboard and company routes and rejects malformed paths', () => {
@@ -53,6 +55,18 @@ test('parseAdminPath parses dashboard and company routes and rejects malformed p
 
 test('adminCompanyPath builds the expected path', () => {
   assert.equal(adminCompanyPath('acme-corp'), '/admin/companies/acme-corp');
+});
+
+test('companyTenantPath and parseCompanyTenantPath handle tenant URLs', () => {
+  assert.equal(companyTenantPath('univrse'), '/companies/univrse');
+  assert.deepEqual(parseCompanyTenantPath('/companies/univrse'), { companyId: 'univrse' });
+  assert.deepEqual(parseCompanyTenantPath('/companies/univrse/'), { companyId: 'univrse' });
+  assert.deepEqual(parseCompanyTenantPath('/companies/univrse/login'), { companyId: 'univrse' });
+  assert.deepEqual(parseCompanyTenantPath('/companies/acme-corp'), { companyId: 'acme-corp' });
+  assert.equal(parseCompanyTenantPath('/companies'), null);
+  assert.equal(parseCompanyTenantPath('/companies/'), null);
+  assert.equal(parseCompanyTenantPath('/companies/BAD_CAPS'), null);
+  assert.equal(parseCompanyTenantPath('/admin'), null);
 });
 
 test('isAdminArea identifies admin area correctly', () => {

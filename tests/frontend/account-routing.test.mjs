@@ -156,6 +156,32 @@ test('non-admin visiting /admin routes is redirected to landing', () => {
   );
 });
 
+test('signed-out visitors on /admin see admin sign-in, and /admin/* redirects to /admin', () => {
+  assert.deepEqual(routeDecision({ accounts: true, path: '/admin' }), { type: 'render' });
+  assert.deepEqual(routeDecision({ accounts: true, path: '/admin/companies/univrse' }), {
+    type: 'redirect',
+    to: '/admin',
+  });
+});
+
+test('company tenant URLs: signed-out visitors see company sign-in; signed-in users go to landing', () => {
+  for (const path of ['/companies/univrse', '/companies/univrse/login', '/companies/acme-corp']) {
+    assert.deepEqual(routeDecision({ accounts: true, path }), { type: 'render' });
+    assert.deepEqual(routeDecision({ accounts: true, account: emp, path }), {
+      type: 'redirect',
+      to: '/onboarding',
+    });
+    assert.deepEqual(routeDecision({ accounts: true, account: hr, path }), {
+      type: 'redirect',
+      to: '/hr',
+    });
+    assert.deepEqual(routeDecision({ accounts: true, account: admin, path }), {
+      type: 'redirect',
+      to: '/admin',
+    });
+  }
+});
+
 import { sessionCheckOutcome } from '../../src/access/account-routing.mjs';
 import { ensureSession, registerSessionVerifier } from '../../src/access/account-api.mjs';
 

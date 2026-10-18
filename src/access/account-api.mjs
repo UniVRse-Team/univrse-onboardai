@@ -157,4 +157,6 @@ export const accountApi = {
       body: { status },
     }),
   hrCompany: (options) => accountRequest('/api/hr/company', options),
+  publicCompany: (companyId, options) =>
+    accountRequest('/api/auth/companies/' + enc(companyId), { report: false, ...options }),
 };

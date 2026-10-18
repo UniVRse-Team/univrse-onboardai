@@ -489,3 +489,62 @@
   align-items: center;
   margin-bottom: 10px;
 }
+
+/* Platform Admin Sign In */
+.admin-signin-container {
+  align-items: center;
+  justify-content: center;
+  margin: auto;
+  padding: 48px 16px;
+}
+
+.admin-signin-card {
+  width: min(480px, 100%);
+  padding: 36px;
+  background: #ffffff;
+  border: 1px solid #d3e1eb;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
+}
+
+.admin-signin-card .admin-card-header {
+  padding: 0 0 20px 0;
+  border-bottom: 1px solid #eef3f7;
+  margin-bottom: 24px;
+}
+
+.admin-signin-card .admin-card-header h2 {
+  font-size: 22px;
+  margin: 6px 0;
+  color: #1a2a3a;
+}
+
+.admin-signin-card .admin-card-header p {
+  font-size: 13px;
+  color: #526986;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.admin-signin-card .access-password {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.admin-signin-card .access-password input {
+  width: 100%;
+  padding-right: 64px;
+}
+
+.admin-signin-card .access-password button {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  color: #256a91;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px;
+}
