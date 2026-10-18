@@ -713,3 +713,55 @@ test('HR reads company and profile details from /api/hr/company', async () => {
     assert.ok(response.body.profile);
   });
 });
+
+test('admin and hr sessions coexist in the same browser without conflict', async () => {
+  await withApp(async (app) => {
+    const hr = await app.hrBrowser();
+
+    // Create an admin account and sign in
+    await app.store.createAccount({
+      username: 'ADMIN-0001',
+      passwordHash: await app.hashing.hash('admin-pass-1'),
+      role: 'admin',
+      mustChangePassword: false,
+      action: 'admin_created',
+      at: app.clock.now(),
+      companyId: null,
+    });
+
+    const adminSignIn = await fetch(app.url + '/api/auth/sign-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'ADMIN-0001', password: 'admin-pass-1' }),
+    });
+    assert.equal(adminSignIn.status, 200);
+    const [adminCookieHeader] = adminSignIn.headers.getSetCookie();
+    assert.match(adminCookieHeader, /^onboardai_admin=/);
+
+    // Simulate same browser having both onboardai_admin and onboardai_account
+    const hrCookie = hr.cookieHeader;
+    const adminToken = adminCookieHeader.slice(
+      'onboardai_admin='.length,
+      adminCookieHeader.indexOf(';'),
+    );
+    const combinedCookie = `${hrCookie}; onboardai_admin=${adminToken}`;
+
+    // Admin scope returns the admin account
+    const adminSessionRes = await fetch(app.url + '/api/auth/session?scope=admin', {
+      headers: { cookie: combinedCookie },
+    });
+    assert.equal(adminSessionRes.status, 200);
+    const adminSessionData = await adminSessionRes.json();
+    assert.equal(adminSessionData.account.role, 'admin');
+    assert.equal(adminSessionData.account.username, 'ADMIN-0001');
+
+    // Account/HR scope returns the HR account without conflict
+    const hrSessionRes = await fetch(app.url + '/api/auth/session?scope=account', {
+      headers: { cookie: combinedCookie },
+    });
+    assert.equal(hrSessionRes.status, 200);
+    const hrSessionData = await hrSessionRes.json();
+    assert.equal(hrSessionData.account.role, 'hr');
+    assert.equal(hrSessionData.account.username, 'HR-0001');
+  });
+});
