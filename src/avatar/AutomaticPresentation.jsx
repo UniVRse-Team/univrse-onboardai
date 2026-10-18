@@ -128,9 +128,9 @@ export default function AutomaticPresentation({
     !!finishReading && !led && canConfirmRead({ voiceAvailable: false, step, order, pageCounts });
   const pages = pageCounts[current] || 1;
   // Without a voice the guide advances at reading pace, so nobody has to press Next.
-  // Choosing a step by hand takes over; reduced motion never auto-advances.
+  // Reduced motion only calms the animation; it never turns the guide into a Next button.
   useEffect(() => {
-    if (!autoAdvance || led || heardVoice || manual || reducedMotion || bounds.last) return;
+    if (!autoAdvance || led || heardVoice || manual || bounds.last) return;
     const scene = presentation.scenes[order[step.scene]];
     const words = String(scene?.body || '')
       .split(/\s+/)
@@ -143,7 +143,7 @@ export default function AutomaticPresentation({
       if (next.scene !== step.scene) setAnnouncement(stepAnnouncement(presentation, order, next));
     }, wait);
     return () => clearTimeout(timer);
-  }, [autoAdvance, led, heardVoice, manual, reducedMotion, step, pageCounts, presentation]);
+  }, [autoAdvance, led, heardVoice, manual, step, pageCounts, presentation]);
   function move(next) {
     setManual(true);
     setStep(next);
@@ -201,8 +201,8 @@ export default function AutomaticPresentation({
               <span>Listen again</span>
             </button>
           )}
-          {/* The guide moves by itself; only with reduced motion (no auto-advance) is it stepped by hand. */}
-          {reducedMotion && (
+          {/* The guide moves by itself; Previous and Next exist only where auto-advance is off. */}
+          {!autoAdvance && (
             <div className="automatic-step-nav" role="group" aria-label="Step through the guide">
               <button
                 type="button"

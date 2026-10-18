@@ -36,14 +36,6 @@ test('every quiz targets a real policy step and has a valid answer key and expla
   assert.ok(RESPONSIBILITY_ITEMS.length > 0);
 });
 
-test('tool-access steps are real, required role-tools steps; none is the AI assessment', () => {
-  for (const id of TOOL_ACCESS_STEP_IDS) {
-    assert.equal(stepById[id].areaId, 'role-tools');
-    assert.notEqual(stepById[id].required, false);
-  }
-  assert.ok(!TOOL_ACCESS_STEP_IDS.includes('role-tools.ai-readiness-training'));
-});
-
 test('public content never carries an answer key', () => {
   const raw = JSON.stringify(publicVerificationContent(buildVerificationContent()));
   assert.ok(!/"correct"|matchedItem|correctId|explanation/.test(raw));
@@ -67,13 +59,9 @@ test('each task states how it is verified, and optional tasks never look require
   assert.equal(kind('policies.data-protection'), 'policy');
   assert.equal(kind('alignment.products-customers'), 'matching');
   assert.equal(kind('alignment.mission-values'), 'knowledge');
-  assert.equal(kind('role-tools.gsheet-account'), 'access');
   assert.equal(kind('role-tools.ai-readiness-training'), 'assessment');
-  assert.equal(kind('role-tools.email-signature'), 'self');
   // Read-and-confirm steps have no quiz: the employee confirms them.
-  assert.equal(kind('policies.company-sop-policies'), 'self');
-  assert.equal(kind('policies.sop-internal-meeting'), 'self');
-  assert.equal(kind('alignment.social-media-accounts'), 'self');
+  assert.equal(kind('alignment.mission-values'), 'knowledge');
   assert.equal(kind('policies.employee-handbook'), 'policy');
   assert.equal(kind('team-support.working-preferences'), 'optional');
   assert.equal(

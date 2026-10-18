@@ -61,7 +61,7 @@ test('every new route needs a session; employee routes refuse HR and HR routes r
       ['get', '/api/hr/knowledge-gaps'],
       ['get', '/api/hr/team-insights'],
       ['get', `/api/hr/employees/${id}/onboarding`],
-      ['patch', `/api/hr/employees/${id}/onboarding/steps/documentation.tax-id-documents`],
+      ['patch', `/api/hr/employees/${id}/onboarding/steps/documentation.employee-information-form`],
       ['get', `/api/hr/employees/${id}/first-day`],
       ['put', `/api/hr/employees/${id}/first-day`],
     ];
@@ -94,7 +94,7 @@ test('every new route needs a session; employee routes refuse HR and HR routes r
   });
 });
 
-test('a new employee sees 0% with the first Documentation step next; self steps persist across browsers', async () => {
+test('a new employee sees the starting percent with the first Documentation step next; self steps persist across browsers', async () => {
   await withApp({}, async (app) => {
     const hr = await app.hrBrowser();
     const { employee, browser } = await app.readyEmployee(hr);
@@ -102,7 +102,7 @@ test('a new employee sees 0% with the first Documentation step next; self steps 
     assert.equal(first.status, 200);
     assert.equal(first.body.percent, 0);
     assert.equal(first.body.track, 'employee');
-    assert.equal(first.body.nextStep.id, 'documentation.tax-id-documents');
+    assert.equal(first.body.nextStep.id, 'documentation.employee-information-form');
     assert.equal(first.body.nextStep.areaTitle, 'Documentation');
     assert.deepEqual(
       first.body.areas.map((a) => a.id),
@@ -111,50 +111,47 @@ test('a new employee sees 0% with the first Documentation step next; self steps 
     // Served without the stored template too (built-in fallback), and nothing written.
     assert.deepEqual(app.firestore.paths('onboardingProgress/'), []);
 
-    // Alya's briefing comes first (contract v1.5).
-    const gated = await browser.post(
-      '/api/me/onboarding/steps/role-tools.email-signature/complete',
-    );
-    assert.deepEqual([gated.status, gated.body.code], [409, 'BRIEFING_REQUIRED']);
+    // An alignment task is finished only by its activity, never by a direct request.
+    const gated = await browser.post('/api/me/onboarding/steps/alignment.mission-values/complete');
+    assert.deepEqual([gated.status, gated.body.code], [409, 'VERIFICATION_REQUIRED']);
+    // Alya's briefing is recorded for a required step (contract v1.5) and leaves it todo.
     const briefed = await browser.post(
-      '/api/me/onboarding/steps/role-tools.email-signature/briefing',
+      '/api/me/onboarding/steps/alignment.mission-values/briefing',
       { completion: 'listened' },
     );
     assert.equal(briefed.status, 200);
     assert.deepEqual(
       [
-        step(briefed.body, 'role-tools.email-signature').briefed,
-        step(briefed.body, 'role-tools.email-signature').status,
+        step(briefed.body, 'alignment.mission-values').briefed,
+        step(briefed.body, 'alignment.mission-values').status,
       ],
       [true, 'todo'],
     );
-    const done = await browser.post('/api/me/onboarding/steps/role-tools.email-signature/complete');
+    // The optional People & Support step is confirmed directly and never changes the percent.
+    const optional = 'team-support.working-preferences';
+    const done = await browser.post(`/api/me/onboarding/steps/${optional}/complete`);
     assert.equal(done.status, 200);
-    assert.equal(step(done.body, 'role-tools.email-signature').status, 'done');
-    assert.equal(step(done.body, 'role-tools.email-signature').source, 'employee');
-    assert.equal(
-      step(done.body, 'role-tools.email-signature').updatedAt,
-      '2026-10-15T01:00:00.000Z',
-    );
-    assert.equal(area(done.body, 'role-tools').percent, 10);
-    assert.equal(done.body.percent, 2);
+    assert.equal(step(done.body, optional).status, 'done');
+    assert.equal(step(done.body, optional).source, 'employee');
+    assert.equal(step(done.body, optional).updatedAt, '2026-10-15T01:00:00.000Z');
+    assert.equal(done.body.percent, 0);
     // Completing it again changes nothing.
-    const again = await browser.post(
-      '/api/me/onboarding/steps/role-tools.email-signature/complete',
-    );
+    const again = await browser.post(`/api/me/onboarding/steps/${optional}/complete`);
     assert.deepEqual(again.body, done.body);
     const stored = app.firestore.read(`onboardingProgress/${employee.account.id}`);
     assert.deepEqual(stored, {
       accountId: employee.account.id,
       updatedAt: '2026-10-15T01:00:00.000Z',
       steps: {
-        'role-tools.email-signature': {
+        'alignment.mission-values': {
+          briefedAt: '2026-10-15T01:00:00.000Z',
+          briefedBy: 'listened',
+        },
+        [optional]: {
           status: 'done',
           updatedAt: '2026-10-15T01:00:00.000Z',
           source: 'employee',
           actorId: employee.account.id,
-          briefedAt: '2026-10-15T01:00:00.000Z',
-          briefedBy: 'listened',
         },
       },
     });
@@ -163,20 +160,14 @@ test('a new employee sees 0% with the first Documentation step next; self steps 
     const phone = app.browser();
     await browser.post('/api/auth/sign-out');
     assert.equal((await phone.signIn('PC-0001', 'employee-own-pass-1')).status, 200);
-    assert.equal((await phone.get('/api/me/onboarding')).body.percent, 2);
+    assert.equal(step((await phone.get('/api/me/onboarding')).body, optional).status, 'done');
 
     // Undo a self step.
-    const undone = await phone.post('/api/me/onboarding/steps/role-tools.email-signature/reopen');
-    assert.equal(step(undone.body, 'role-tools.email-signature').status, 'todo');
+    const undone = await phone.post(`/api/me/onboarding/steps/${optional}/reopen`);
+    assert.equal(step(undone.body, optional).status, 'todo');
     assert.equal(undone.body.percent, 0);
-    // Reopening keeps the briefing.
-    assert.equal(step(undone.body, 'role-tools.email-signature').briefed, true);
-    assert.deepEqual(app.firestore.read(`onboardingProgress/${employee.account.id}`).steps, {
-      'role-tools.email-signature': {
-        briefedAt: '2026-10-15T01:00:00.000Z',
-        briefedBy: 'listened',
-      },
-    });
+    // Reopening keeps the briefing recorded on the other step.
+    assert.equal(step(undone.body, 'alignment.mission-values').briefed, true);
 
     // Unknown steps.
     for (const path of [
@@ -196,15 +187,14 @@ test('a documentation task is complete once its document is saved; HR review is 
     const hrId = (await hr.get('/api/auth/session')).body.account.id;
     const { employee, browser } = await app.readyEmployee(hr);
     const id = employee.account.id;
-    const contract = 'documentation.tax-id-documents';
-    const emergency = 'documentation.personal-bank-details';
+    const contract = 'documentation.employee-information-form';
     const docs = () => area(onboardingNow, 'documentation');
     let onboardingNow;
     const load = async () => (onboardingNow = (await browser.get('/api/me/onboarding')).body);
 
     // A new employee: every document is still to do and nothing is complete.
     await load();
-    assert.deepEqual([docs().percent, docs().done, docs().total], [0, 0, 3]);
+    assert.deepEqual([docs().percent, docs().done, docs().total], [0, 0, 1]);
     assert.ok(docs().steps.every((item) => item.status === 'todo' && item.requiresDocument));
 
     // Marking a document step is refused, briefed or not: the document is the action.
@@ -225,13 +215,12 @@ test('a documentation task is complete once its document is saved; HR review is 
     assert.equal(step(await load(), contract).status, 'todo');
     assert.equal(docs().percent, 0);
 
-    // A saved submission completes that task, and only that one.
+    // A saved submission completes that task.
     const first = await uploadDocument(browser, contract);
     assert.equal(first.status, 201, first.text);
     await load();
     assert.equal(step(onboardingNow, contract).status, 'done');
-    assert.equal(step(onboardingNow, emergency).status, 'todo');
-    assert.deepEqual([docs().done, docs().percent], [1, 33]);
+    assert.deepEqual([docs().done, docs().percent], [1, 100]);
     // It is saved against the employee: another session sees the same, HR too.
     const again = await app.browser();
     assert.equal(
@@ -243,52 +232,51 @@ test('a documentation task is complete once its document is saved; HR review is 
     // A second file for a submitted task is refused.
     assert.equal((await uploadDocument(browser, contract)).status, 409);
 
-    // HR's review is separate: approving, or asking for a correction, changes no progress.
-    const approved = await hr.patch('/api/hr/document-submissions/' + first.body.submission.id, {
+    // HR's review is separate: asking for a correction changes no progress.
+    await hr.patch('/api/hr/document-submissions/' + first.body.submission.id, {
+      status: 'Rejected',
+      remarks: 'The scan is cut off.',
+      revision: 1,
+    });
+    assert.deepEqual([step(await load(), contract).status, docs().percent], ['done', 100]); // still submitted
+    // The employee may replace a file HR rejected; the earlier record and reason are kept.
+    const replaced = await uploadDocument(browser, contract);
+    assert.equal(replaced.status, 201);
+    assert.equal(replaced.body.submission.resubmissionOf, first.body.submission.id);
+    const kept = (await browser.get('/api/me/document-submissions')).body.submissions;
+    assert.equal(
+      kept.find((item) => item.id === first.body.submission.id).remarks,
+      'The scan is cut off.',
+    );
+    // Approving the replacement changes no progress either.
+    const approved = await hr.patch('/api/hr/document-submissions/' + replaced.body.submission.id, {
       status: 'Approved',
       revision: 1,
     });
     assert.equal(approved.status, 200);
     assert.equal(approved.body.submission.reviewerId, hrId);
-    assert.deepEqual([step(await load(), contract).status, docs().percent], ['done', 33]);
-    const second = await uploadDocument(browser, emergency);
-    await hr.patch('/api/hr/document-submissions/' + second.body.submission.id, {
-      status: 'Rejected',
-      remarks: 'The scan is cut off.',
-      revision: 1,
-    });
-    assert.equal(step(await load(), emergency).status, 'done'); // still submitted
-    // The employee may replace a file HR rejected; the earlier record and reason are kept.
-    const replaced = await uploadDocument(browser, emergency);
-    assert.equal(replaced.status, 201);
-    assert.equal(replaced.body.submission.resubmissionOf, second.body.submission.id);
-    const kept = (await browser.get('/api/me/document-submissions')).body.submissions;
-    assert.equal(
-      kept.find((item) => item.id === second.body.submission.id).remarks,
-      'The scan is cut off.',
-    );
+    assert.deepEqual([step(await load(), contract).status, docs().percent], ['done', 100]);
     // HR cannot un-submit a task whose document was saved.
     const unsubmit = await hr.patch(`/api/hr/employees/${id}/onboarding/steps/${contract}`, {
       status: 'todo',
     });
     assert.deepEqual([unsubmit.status, unsubmit.body.code], [409, 'DOCUMENT_SUBMITTED']);
 
-    // The section is complete only when every required document is saved.
-    assert.equal(docs().done, 2);
-    for (const stepId of ['documentation.employee-information-form']) {
-      assert.equal(docs().done < docs().total, true);
-      assert.equal((await uploadDocument(browser, stepId)).status, 201);
-      await load();
-    }
-    assert.deepEqual([docs().done, docs().total, docs().percent], [3, 3, 100]);
+    // The section is complete only when its required document is saved.
+    assert.deepEqual([docs().done, docs().total, docs().percent], [1, 1, 100]);
 
     // Other hr_verify rules still hold: unknown steps and invalid bodies.
     for (const [path, body, status, code] of [
       ['alignment.mission-values', { status: 'done' }, 409, 'STEP_NOT_HR_VERIFIED'],
       ['policies.employee-handbook', { status: 'done' }, 409, 'STEP_NOT_HR_VERIFIED'],
       ['documentation.nope', { status: 'done' }, 404, 'STEP_NOT_FOUND'],
-      ['documentation.tax-id-documents', { status: 'submitted' }, 400, 'STEP_STATUS_INVALID'],
-      ['documentation.tax-id-documents', [], 400, 'STEP_STATUS_INVALID'],
+      [
+        'documentation.employee-information-form',
+        { status: 'submitted' },
+        400,
+        'STEP_STATUS_INVALID',
+      ],
+      ['documentation.employee-information-form', [], 400, 'STEP_STATUS_INVALID'],
     ]) {
       const refused = await hr.patch(`/api/hr/employees/${id}/onboarding/steps/${path}`, body);
       assert.deepEqual([refused.status, refused.body.code], [status, code], path);
@@ -357,7 +345,7 @@ test('policy checks: no answer in the question, a wrong answer stores nothing, a
     const passed = await browser.post(`${path}/check`, { optionId: expected.correctOptionId });
     assert.equal(passed.body.correct, true);
     assert.equal(step(passed.body.onboarding, 'policies.employee-handbook').status, 'done');
-    assert.equal(area(passed.body.onboarding, 'policies').percent, 33);
+    assert.equal(area(passed.body.onboarding, 'policies').percent, 50);
     assert.deepEqual(
       Object.keys(app.firestore.read(`onboardingProgress/${employee.account.id}`).steps),
       ['policies.employee-handbook'],
@@ -376,7 +364,7 @@ test('policy checks: no answer in the question, a wrong answer stores nothing, a
   });
 });
 
-test('the track picks the template; 3 of 4 required steps in every area completes a contractor', async () => {
+test('the track picks the template; 70% of the required steps in every area completes a contractor', async () => {
   // A grader that passes every written answer: grading has its own tests.
   const checkGrader = { grade: async () => ({ correct: true, feedback: 'Well done.' }) };
   await withApp({ checkGrader, submissionFiles: createMemorySubmissionFiles() }, async (app) => {
@@ -392,17 +380,16 @@ test('the track picks the template; 3 of 4 required steps in every area complete
     assert.deepEqual(
       start.areas.map((a) => [a.id, a.total]),
       [
-        ['documentation', 3],
-        ['policies', 3],
-        ['alignment', 4],
-        ['role-tools', 10],
-        ['team-support', 4],
+        ['documentation', 1],
+        ['policies', 2],
+        ['alignment', 3],
+        ['role-tools', 0],
+        ['team-support', 0],
       ],
     );
-    assert.equal(step(start, 'documentation.tax-id-documents').completion, 'hr_verify');
+    assert.equal(step(start, 'documentation.employee-information-form').completion, 'hr_verify');
     const template = builtInTemplate('contractor');
     // Complete enough required steps in every area to meet the 70% threshold.
-    const completedSelf = [];
     for (const a of template.areas) {
       const requiredSteps = a.steps.filter((t) => t.required);
       const needed = Math.ceil(requiredSteps.length * 0.7);
@@ -437,7 +424,6 @@ test('the track picks the template; 3 of 4 required steps in every area complete
           await hr.post(`/api/hr/employees/${id}/task-verifications/tool-access/${s.id}`, {});
         } else if (s.completion === 'self') {
           await browser.post(`/api/me/onboarding/steps/${s.id}/complete`);
-          completedSelf.push([a.id, s.id]);
         }
         if (s.completion === 'hr_verify') {
           const uploaded = await uploadDocument(browser, s.id);
@@ -457,25 +443,14 @@ test('the track picks the template; 3 of 4 required steps in every area complete
     }
     const end = (await browser.get('/api/me/onboarding')).body;
     assert.deepEqual(
-      [end.percent, end.complete, end.waitingOnHr, end.nextStep.id],
-      [84, true, 0, 'alignment.role-contribution'],
+      [end.percent, end.complete, end.waitingOnHr, end.nextStep],
+      [100, true, 0, null],
     );
     assert.ok(end.areas.every((a) => a.meetsThreshold && a.percent >= 70));
     const listed = (await hr.get('/api/hr/employees')).body.employees[0];
     assert.deepEqual(
       [listed.track, listed.onboarding],
-      ['contractor', { percent: 84, waitingOnHr: 0, complete: true }],
-    );
-    // Undoing one self step drops that area to 2 of 4: no longer complete.
-    const [reopenedArea, reopenedStep] = completedSelf[0];
-    const undone = await browser.post(`/api/me/onboarding/steps/${reopenedStep}/reopen`);
-    assert.deepEqual(
-      [
-        area(undone.body, reopenedArea).meetsThreshold,
-        undone.body.complete,
-        undone.body.nextStep.id,
-      ],
-      [false, false, reopenedStep],
+      ['contractor', { percent: 100, waitingOnHr: 0, complete: true }],
     );
     // The optional step completes and reopens like a self step and changes no progress.
     const optional = await browser.post(
@@ -485,7 +460,7 @@ test('the track picks the template; 3 of 4 required steps in every area complete
     assert.equal(step(optional.body, 'team-support.working-preferences').required, false);
     assert.deepEqual(
       [optional.body.percent, area(optional.body, 'team-support').done],
-      [undone.body.percent, 3],
+      [end.percent, 0],
     );
     const reopened = await browser.post(
       '/api/me/onboarding/steps/team-support.working-preferences/reopen',
@@ -525,7 +500,7 @@ test('a stored template replaces the built-in one; a malformed one falls back to
       areas: custom.areas.slice(1),
     });
     view = (await browser.get('/api/me/onboarding')).body;
-    assert.equal(view.nextStep.title, 'Pass over a copy of your IC (front and back)');
+    assert.equal(view.nextStep.title, 'Upload your Employee Information Form');
     assert.ok(app.logs.some((line) => /template is malformed/.test(line)));
   });
 });

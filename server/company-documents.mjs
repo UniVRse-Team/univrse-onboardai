@@ -15,6 +15,7 @@ import {
 import { createStorageCall } from './firestore-client.mjs';
 import { createAccessTokenProvider } from './vertex-ai.mjs';
 import { workspaceLimits } from './workspace-limits.mjs';
+import { DEFAULT_COMPANY_ID } from './companies.mjs';
 
 export { gcsObjectName };
 
@@ -195,7 +196,7 @@ export function createVertexDocumentSync({
     );
 
   return {
-    async uploadDocument({ id, fileName, text, content, companyId = 'univrse' }) {
+    async uploadDocument({ id, fileName, text, content, companyId = DEFAULT_COMPANY_ID }) {
       const bearer = await token('gcs.upload', id);
       const objectName = gcsObjectName(id, fileName, companyId);
       const ext = extensionOf(objectName);
@@ -218,7 +219,7 @@ export function createVertexDocumentSync({
             documents: [
               {
                 id,
-                structData: { companyId: companyId || 'univrse' },
+                structData: { companyId: companyId || DEFAULT_COMPANY_ID },
                 content: { mimeType: contentType, uri: gsUri },
               },
             ],
@@ -417,7 +418,7 @@ const stored = (doc) => {
     fingerprint: String(data.fingerprint || ''),
     connectedBy: data.connectedBy || null,
     connectedAt: data.connectedAt || null,
-    companyId: data.companyId || 'univrse',
+    companyId: data.companyId || DEFAULT_COMPANY_ID,
     objectName: data.objectName || null,
     created: created(data),
     status: statusOf(data),
@@ -478,7 +479,7 @@ const planEntry = (doc) => {
     title: String(data.title || ''),
     fileName: String(data.fileName || ''),
     supersedes: typeof data.supersedes === 'string' ? data.supersedes : null,
-    companyId: data.companyId || 'univrse',
+    companyId: data.companyId || DEFAULT_COMPANY_ID,
     objectName: data.objectName || null,
   };
 };
@@ -629,7 +630,7 @@ export function createCompanyDocumentStore({
     // writes metadata only (never the text) in one transaction, so two HR
     // browsers cannot both take the last place, then syncs new documents to
     // GCS + Vertex AI Search. Resolves to { id, duplicate }.
-    add: async (upload, connectedBy, at, companyId = 'univrse') => {
+    add: async (upload, connectedBy, at, companyId = DEFAULT_COMPANY_ID) => {
       const db = await guarded('add company document', database);
       const plan = await guarded('add company document', () =>
         db.runTransaction(async (tx) => {
@@ -695,7 +696,7 @@ export function createCompanyDocumentStore({
       connectedBy,
       at,
       { audit = null } = {},
-      companyId = 'univrse',
+      companyId = DEFAULT_COMPANY_ID,
     ) => {
       if (!validId(replaces)) throw companyDocumentErrors.notFound();
       const db = await guarded('replace company document', database);
@@ -795,7 +796,7 @@ export function createCompanyDocumentStore({
           const docSnap = await tx.get(docRef);
           if (!docSnap.exists || statusOf(docSnap.data()) === 'retired')
             throw companyDocumentErrors.notFound();
-          const docCompanyId = docSnap.data().companyId || 'univrse';
+          const docCompanyId = docSnap.data().companyId || DEFAULT_COMPANY_ID;
           if (companyId && docCompanyId !== companyId) {
             throw companyDocumentErrors.notFound();
           }

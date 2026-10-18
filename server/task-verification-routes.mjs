@@ -201,7 +201,10 @@ export function mountTaskVerificationRoutes({
 
   me.get('/company-policy-handbook', employee, async (req, res) => {
     const acc = account(req);
-    if (contentPackOf(acc.companyId) !== 'univrse') {
+    if (
+      contentPackOf(acc.companyId) !== 'luna-digital' &&
+      contentPackOf(acc.companyId) !== 'univrse'
+    ) {
       return res.json({
         metadata: null,
         policies: {},
@@ -233,7 +236,10 @@ export function mountTaskVerificationRoutes({
 
   me.post('/task-verifications/:areaId/:activityId', employee, async (req, res) => {
     const acc = account(req);
-    if (contentPackOf(acc.companyId) !== 'univrse') {
+    if (
+      contentPackOf(acc.companyId) !== 'luna-digital' &&
+      contentPackOf(acc.companyId) !== 'univrse'
+    ) {
       throw new ChatError(404, 'ACTIVITY_NOT_FOUND', 'Verification activity not found.');
     }
     const { areaId, activityId } = req.params;

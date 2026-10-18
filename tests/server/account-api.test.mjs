@@ -639,9 +639,13 @@ test('account routes reject other origins and report database failures without d
 
 test('public company endpoint returns active company and rejects disabled or missing company', async () => {
   await withApp(async (app) => {
-    const res = await app.browser().get('/api/auth/companies/univrse');
+    const res = await app.browser().get('/api/auth/companies/luna-digital');
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body.company, { id: 'univrse', name: 'UniVRse', status: 'active' });
+    assert.deepEqual(res.body.company, {
+      id: 'luna-digital',
+      name: 'Luna Digital',
+      status: 'active',
+    });
 
     const missing = await app.browser().get('/api/auth/companies/nonexistent');
     assert.equal(missing.status, 404);
@@ -665,7 +669,7 @@ test('admin can create HR accounts and rename companies via CRUD endpoints', asy
     assert.equal(login.status, 200);
 
     // 1. Create HR account for company
-    const hrRes = await admin.post('/api/admin/companies/univrse/hr-accounts', {});
+    const hrRes = await admin.post('/api/admin/companies/luna-digital/hr-accounts', {});
     assert.equal(hrRes.status, 201);
     assert.match(hrRes.body.hrAccount.username, /^HR-[0-9]{4}$/);
     assert.equal(hrRes.body.hrAccount.status, 'active');
@@ -674,25 +678,25 @@ test('admin can create HR accounts and rename companies via CRUD endpoints', asy
     assert.equal(hrRes.body.company.defaultHr.username, hrRes.body.hrAccount.username);
 
     // List HR accounts
-    const listHr = await admin.get('/api/admin/companies/univrse/hr-accounts');
+    const listHr = await admin.get('/api/admin/companies/luna-digital/hr-accounts');
     assert.equal(listHr.status, 200);
     assert.ok(listHr.body.hrAccounts.some((a) => a.username === hrRes.body.hrAccount.username));
 
     // 2. Rename company (Update)
-    const renamed = await admin.patch('/api/admin/companies/univrse', {
-      name: 'UniVRse Global Tech',
+    const renamed = await admin.patch('/api/admin/companies/luna-digital', {
+      name: 'Luna Digital Tech',
     });
     assert.equal(renamed.status, 200);
-    assert.equal(renamed.body.company.name, 'UniVRse Global Tech');
+    assert.equal(renamed.body.company.name, 'Luna Digital Tech');
 
     // Verify company list reflects updated name (Read)
     const companies = await admin.get('/api/admin/companies');
     assert.equal(companies.status, 200);
-    const found = companies.body.companies.find((c) => c.id === 'univrse');
-    assert.equal(found.name, 'UniVRse Global Tech');
+    const found = companies.body.companies.find((c) => c.id === 'luna-digital');
+    assert.equal(found.name, 'Luna Digital Tech');
 
     // Reject empty company name
-    const invalidRename = await admin.patch('/api/admin/companies/univrse', { name: '   ' });
+    const invalidRename = await admin.patch('/api/admin/companies/luna-digital', { name: '   ' });
     assert.equal(invalidRename.status, 400);
     assert.equal(invalidRename.body.code, 'COMPANY_INVALID');
   });
@@ -703,8 +707,8 @@ test('HR reads company and profile details from /api/hr/company', async () => {
     const hr = await app.hrBrowser();
     const response = await hr.get('/api/hr/company');
     assert.equal(response.status, 200);
-    assert.equal(response.body.company.id, 'univrse');
-    assert.equal(response.body.company.name, 'UniVRse');
+    assert.equal(response.body.company.id, 'luna-digital');
+    assert.equal(response.body.company.name, 'Luna Digital');
     assert.equal(response.body.company.status, 'active');
     assert.ok(response.body.profile);
   });

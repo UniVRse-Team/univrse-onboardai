@@ -61,7 +61,7 @@ export function resolveActivity(id, onboarding, content) {
     return {
       ...base,
       kind: 'checklist',
-      title: 'Role responsibilities checklist',
+      title: 'Roles & Responsibilities',
       instructions: 'Confirm that you know your role and have talked through it with your manager.',
       objectives: ['Know your role and what your manager expects from you first.'],
       requirement: 'Tick every item and save. This is an acknowledgement, not an assessment.',

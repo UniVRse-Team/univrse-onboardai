@@ -21,8 +21,11 @@ export async function startLocalPreview({
   const { avatarRoute } = await import('../server/avatar-route.mjs');
   const { createServer: createViteServer } = await import('vite');
   const { createMemorySubmissionFiles } = await import('../server/submission-files.mjs');
+  const { previewModels, previewRetrieve } = await import('./preview-chat.mjs');
   const fixture = await startAccountsApp({
     mode: 'gemini-chat',
+    models: previewModels,
+    companyRetrieve: previewRetrieve,
     submissionFiles: createMemorySubmissionFiles(),
   });
   const hr = await fixture.hrBrowser();

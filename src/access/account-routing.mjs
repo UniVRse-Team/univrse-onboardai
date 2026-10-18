@@ -1,8 +1,8 @@
 // Which screen a signed-in or signed-out browser sees for a path.
 
 // An admin lands on the platform dashboard, HR on their company workspace (/hr/:companyId), and an
-// employee on My onboarding (/onboarding).
-export const defaultCompanyId = 'univrse';
+// employee on Ask Alya (/alya).
+export const defaultCompanyId = 'luna-digital';
 export const hrCompanyPath = (companyId) =>
   '/hr/' + encodeURIComponent(companyId || defaultCompanyId);
 
@@ -11,7 +11,7 @@ export const landingPath = (account) =>
     ? '/admin'
     : account?.role === 'hr'
       ? hrCompanyPath(account?.companyId || account?.company?.id)
-      : '/onboarding';
+      : '/alya';
 
 export const adminHome = '/admin';
 const companyPathPattern = /^\/admin\/companies\/([a-z][a-z0-9-]{1,30}[a-z0-9])\/?$/;

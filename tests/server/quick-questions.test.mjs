@@ -44,11 +44,11 @@ test('chips: the next-step chip and personal chips before the start date, knowle
     assert.equal(first.status, 200);
     assert.deepEqual(first.body.chips, [
       {
-        id: 'step:documentation.tax-id-documents',
-        label: 'How do I submit a copy of my IC?',
-        question: 'How do I submit a copy of my IC?',
+        id: 'step:documentation.employee-information-form',
+        label: 'How do I submit my Employee Information Form?',
+        question: 'How do I submit my Employee Information Form?',
         kind: 'knowledge',
-        stepId: 'documentation.tax-id-documents',
+        stepId: 'documentation.employee-information-form',
       },
       {
         id: 'day-one-arrival',
@@ -66,22 +66,25 @@ test('chips: the next-step chip and personal chips before the start date, knowle
       },
     ]);
     // Completing the next step (after its briefing, v1.5) changes the step chip.
-    await browser.post('/api/me/onboarding/steps/documentation.tax-id-documents/briefing', {
-      completion: 'read',
-    });
-    assert.equal((await chipIds(browser))[0], 'step:documentation.tax-id-documents');
+    await browser.post(
+      '/api/me/onboarding/steps/documentation.employee-information-form/briefing',
+      {
+        completion: 'read',
+      },
+    );
+    assert.equal((await chipIds(browser))[0], 'step:documentation.employee-information-form');
     // A document step is submitted by uploading its document (not by a button).
     await browser.upload(
       '/api/me/document-submissions?' +
         new URLSearchParams({
           type: 'Employment Documents',
           title: 'Contract',
-          stepId: 'documentation.tax-id-documents',
+          stepId: 'documentation.employee-information-form',
         }),
       pdf('Synthetic document. Not a real record.'),
       'contract.pdf',
     );
-    assert.equal((await chipIds(browser))[0], 'step:documentation.personal-bank-details');
+    assert.equal((await chipIds(browser))[0], 'step:policies.employee-handbook');
     // The day after the start date (company time): still personal; two days
     // after: knowledge. Sessions last 12 hours, so sign in again after each jump.
     const later = async (ms) => {
@@ -114,14 +117,14 @@ test('chips come from config/quickQuestions per track, with the built-in list as
     app.firestore.write('config/quickQuestions', config);
     // No start date: personal first, filled with knowledge.
     assert.deepEqual(await chipIds(browser), [
-      'step:documentation.tax-id-documents',
+      'step:documentation.employee-information-form',
       'synthetic-host',
       'synthetic-knowledge',
     ]);
     // A malformed list falls back to the built-in chips.
     app.firestore.write('config/quickQuestions', { ...config, intern: [{ id: 'x' }] });
     assert.deepEqual(await chipIds(browser), [
-      'step:documentation.tax-id-documents',
+      'step:documentation.employee-information-form',
       'day-one-arrival',
       'day-one-host',
     ]);
@@ -292,10 +295,15 @@ for (const mode of ['document-search', 'gemini-chat'])
         assert.equal(knowledge.body.source.includes('Synthetic handbook'), true);
         assert.equal(searches, 1);
         // A step chip too.
-        const stepChip = await ask(browser, chat.id, 'How do I submit a copy of my IC?', {
-          quickQuestionId: 'step:documentation.tax-id-documents',
-        });
-        assert.equal(stepChip.body.quickQuestionId, 'step:documentation.tax-id-documents');
+        const stepChip = await ask(
+          browser,
+          chat.id,
+          'How do I submit my Employee Information Form?',
+          {
+            quickQuestionId: 'step:documentation.employee-information-form',
+          },
+        );
+        assert.equal(stepChip.body.quickQuestionId, 'step:documentation.employee-information-form');
         // An unknown chip id is an ordinary question.
         const unknown = await ask(browser, chat.id, 'Who will meet me?', {
           quickQuestionId: 'not-a-chip',
@@ -340,7 +348,7 @@ test('chips from a task: its own question, then related ones; an unknown task gi
     assert.ok(ai.body.chips.every((chip) => chip.stepId === 'role-tools.ai-readiness-training'));
     // An unknown task falls back to the general chips (the overall next step first).
     const unknown = await browser.get('/api/me/quick-questions?stepId=nope.nothing');
-    assert.equal(unknown.body.chips[0].id, 'step:documentation.tax-id-documents');
+    assert.equal(unknown.body.chips[0].id, 'step:documentation.employee-information-form');
     // Asked in chat, a related question's chip id is kept (it is about that task).
     const chat = (await browser.post('/api/conversations')).body;
     const related = await ask(browser, chat.id, 'What are the working hours?', {

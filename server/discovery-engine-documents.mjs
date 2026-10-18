@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
+import { DEFAULT_COMPANY_ID } from './companies.mjs';
 
 // Shared names and URLs for the company documents in the documents bucket and
 // the Vertex AI Search (Discovery Engine) data store. Pure functions only (the
@@ -47,7 +48,7 @@ export function gcsObjectName(id, fileName, companyId = null) {
   const indexedName = SUPPORTED_EXTENSIONS.includes(ext)
     ? base
     : base.replace(/\.[A-Za-z0-9]{1,8}$/, '') + '.txt';
-  return companyId && companyId !== 'univrse'
+  return companyId && companyId !== DEFAULT_COMPANY_ID && companyId !== 'univrse'
     ? `companies/${companyId}/${id}/${indexedName}`
     : `${id}/${indexedName}`;
 }

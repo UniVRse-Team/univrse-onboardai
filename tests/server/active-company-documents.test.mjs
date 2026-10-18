@@ -95,7 +95,7 @@ test('the snapshot holds active entries with a file name only, by URI and data s
     version: 1,
     connectedAt: badge.connectedAt,
     date: '2026-03-01',
-    companyId: 'univrse',
+    companyId: 'luna-digital',
   });
   // A .md upload is stored (and indexed) as .txt.
   const md = summary({ id: leave.id, fileName: 'Notes.md' });

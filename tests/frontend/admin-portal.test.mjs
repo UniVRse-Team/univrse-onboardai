@@ -59,6 +59,16 @@ test('adminCompanyPath builds the expected path', () => {
 });
 
 test('companyTenantPath and parseCompanyTenantPath handle tenant URLs', () => {
+  assert.equal(companyTenantPath('luna-digital'), '/companies/luna-digital');
+  assert.deepEqual(parseCompanyTenantPath('/companies/luna-digital'), {
+    companyId: 'luna-digital',
+  });
+  assert.deepEqual(parseCompanyTenantPath('/companies/luna-digital/'), {
+    companyId: 'luna-digital',
+  });
+  assert.deepEqual(parseCompanyTenantPath('/companies/luna-digital/login'), {
+    companyId: 'luna-digital',
+  });
   assert.equal(companyTenantPath('univrse'), '/companies/univrse');
   assert.deepEqual(parseCompanyTenantPath('/companies/univrse'), { companyId: 'univrse' });
   assert.deepEqual(parseCompanyTenantPath('/companies/univrse/'), { companyId: 'univrse' });
