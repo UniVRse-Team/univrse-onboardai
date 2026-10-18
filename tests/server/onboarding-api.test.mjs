@@ -681,7 +681,9 @@ test('multi-tenant HR can view and manage employee onboarding and first-day deta
     assert.equal(changePass.status, 200);
 
     // 3. Acme HR creates an employee.
-    const empRes = await acmeHr.post('/api/hr/employees', { profile: syntheticProfile('Acme Newbie') });
+    const empRes = await acmeHr.post('/api/hr/employees', {
+      profile: syntheticProfile('Acme Newbie'),
+    });
     assert.equal(empRes.status, 201);
     const empId = empRes.body.employee.account.id;
 
@@ -714,4 +716,3 @@ test('multi-tenant HR can view and manage employee onboarding and first-day deta
     assert.equal(crossFirstDay.status, 404);
   });
 });
-
