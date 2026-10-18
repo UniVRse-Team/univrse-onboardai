@@ -239,6 +239,52 @@ const checks = {
       'Update your tasks in GSheet honestly and clearly each day, including your progress, completed work, and any issue that needs help.',
     maxLength: writtenAnswerMaxLength,
   },
+  personalityTest: {
+    type: 'choice',
+    sourceTitle: peopleSupportTitle,
+    scenario:
+      'Your onboarding coordinator asks you about the Talent Personality Test. How should you approach this test and what should you do with the outcome?',
+    options: [
+      {
+        id: 't5q2',
+        text: 'Complete the assigned questions and send your summary to your onboarding contact',
+      },
+      {
+        id: 'b8k4',
+        text: 'Retake the personality test repeatedly until you achieve a senior manager profile',
+      },
+      {
+        id: 'w1m9',
+        text: 'Publish your personal profile score in the main company chat for all to review',
+      },
+    ],
+    correctOptionId: 't5q2',
+    explanation:
+      'Complete the Talent Personality Test honestly according to the instructions, and share the result with your designated onboarding contact if requested.',
+  },
+  mbtiTest: {
+    type: 'choice',
+    sourceTitle: peopleSupportTitle,
+    scenario:
+      'A colleague asks you why new joiners are invited to take the MBTI Personality Test. What is the main purpose of this exercise at UniVRse?',
+    options: [
+      {
+        id: 'p2r8',
+        text: 'Treat the score as an official evaluation of your career skills and prospects',
+      },
+      {
+        id: 'f4n7',
+        text: 'Use the result as an informal starting point to discuss teamwork preferences',
+      },
+      {
+        id: 'h9k3',
+        text: 'Require every teammate to match your own personality type before starting tasks',
+      },
+    ],
+    correctOptionId: 'f4n7',
+    explanation:
+      'The MBTI Personality Test is an optional conversation starter to help colleagues understand how they prefer to communicate and collaborate. It is never an evaluation of capability or performance.',
+  },
 };
 
 // The user's area titles, descriptions and icons (contract v1.2, verbatim).
@@ -543,7 +589,7 @@ const teamSupport = [
       'Join the chat group for your department so you can receive team updates and coordinate daily work with your colleagues. Ask your onboarding coordinator if you have not received the invite link yet.',
     ),
   ),
-  self(
+  checked(
     'talent-personality-test',
     'Complete the Talent Personality Test',
     'Complete the Talent Personality Test (https://www.personalityhub.net/enneagram-test) if assigned and share the result with your onboarding contact if requested.',
@@ -552,8 +598,9 @@ const teamSupport = [
       peopleSupportTitle,
       'Complete the Talent Personality Test on the Personality Hub Enneagram page if it has been assigned to you. Follow the instructions provided and share your result with the designated onboarding contact if requested.',
     ),
+    checks.personalityTest,
   ),
-  self(
+  checked(
     'mbti-personality-test',
     'Complete the MBTI Personality Test',
     'Complete the MBTI Personality Test (https://www.16personalities.com/free-personality-test) if assigned as a conversation starter for working preferences.',
@@ -562,6 +609,7 @@ const teamSupport = [
       peopleSupportTitle,
       'Complete the free MBTI Personality Test on 16Personalities if it has been assigned to you. The result is used as a friendly conversation starter to understand working preferences and is never treated as a test of ability.',
     ),
+    checks.mbtiTest,
   ),
   workingPreferences,
 ];

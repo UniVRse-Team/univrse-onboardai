@@ -295,3 +295,23 @@ test('written checks: invalid answers are 400 and an unavailable grader is 503, 
     assert.equal(answered.body.correct, true);
   });
 });
+
+test('team-support checks: fetching and answering personality test checks completes the step', async () => {
+  await withEmployee({}, async ({ browser }) => {
+    const stepId = 'team-support.talent-personality-test';
+    // Needs briefing first.
+    await browser.post(`/api/me/onboarding/steps/${stepId}/briefing`, { completion: 'read' });
+    const question = await browser.get(`/api/me/onboarding/steps/${stepId}/check`);
+    assert.equal(question.status, 200);
+    assert.equal(question.body.type, 'choice');
+    assert.equal(question.body.sourceTitle, '08 People & Workplace Support');
+
+    const expected = checkOf(stepId);
+    const answered = await browser.post(`/api/me/onboarding/steps/${stepId}/check`, {
+      optionId: expected.correctOptionId,
+    });
+    assert.equal(answered.status, 200);
+    assert.equal(answered.body.correct, true);
+    assert.equal(stepOf(answered.body.onboarding, stepId).status, 'done');
+  });
+});

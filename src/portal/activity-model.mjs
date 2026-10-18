@@ -140,15 +140,26 @@ export function resolveActivity(id, onboarding, content) {
       };
     return null;
   }
-  if (id === 'team-support.working-preferences')
-    return {
-      ...common,
-      kind: 'prefs',
-      instructions: step.description,
-      objectives: [],
-      requirement: 'Optional. Skipping never affects your progress.',
-      mandatory: false,
-    };
+  if (areaOfId === 'team-support') {
+    if (id === 'team-support.working-preferences')
+      return {
+        ...common,
+        kind: 'prefs',
+        instructions: step.description,
+        objectives: [],
+        requirement: 'Optional. Skipping never affects your progress.',
+        mandatory: false,
+      };
+    if (step.completion === 'check')
+      return {
+        ...common,
+        kind: 'check',
+        instructions: step.description,
+        objectives: ['Show you understand workplace support and communication.'],
+        requirement: 'Answer the scenario correctly. You can retry.',
+      };
+    return null;
+  }
   return null;
 }
 
