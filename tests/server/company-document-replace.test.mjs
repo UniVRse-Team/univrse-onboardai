@@ -605,6 +605,7 @@ test('listSummaries: one select-only query of the summary fields, retired entrie
       version: 1,
       connectedAt: '2026-09-01T00:00:00.000Z',
       retiredAt: null,
+      companyId: 'univrse',
     },
     {
       id: c,
@@ -615,6 +616,7 @@ test('listSummaries: one select-only query of the summary fields, retired entrie
       version: 1,
       connectedAt: '2026-09-15T00:00:00.000Z',
       retiredAt: null,
+      companyId: 'univrse',
     },
     {
       id: b,
@@ -625,6 +627,7 @@ test('listSummaries: one select-only query of the summary fields, retired entrie
       version: 2,
       connectedAt: '2026-10-01T00:00:00.000Z',
       retiredAt: '2026-10-02T00:00:00.000Z',
+      companyId: 'univrse',
     },
   ]);
   assert.ok(!JSON.stringify(summaries).includes('Secret'));

@@ -387,7 +387,15 @@ export function planReconciliation({ firestore = [], gcs = [], vertex = [], opti
   const expected = new Map();
   for (const entry of firestore)
     if (entry.status === 'active' && entry.fileName)
-      expected.set(companyDocumentUri({ bucket, id: entry.id, fileName: entry.fileName }), entry);
+      expected.set(
+        companyDocumentUri({
+          bucket,
+          id: entry.id,
+          fileName: entry.fileName,
+          companyId: entry.companyId,
+        }),
+        entry,
+      );
   const live = new Map(gcs.map((object) => [object.name, object]));
   const bucketPrefix = `gs://${bucket}/`;
   const objectOf = (uri) =>
@@ -447,7 +455,7 @@ export function planReconciliation({ firestore = [], gcs = [], vertex = [], opti
     if (
       entry?.status === 'active' &&
       entry.fileName &&
-      gcsObjectName(entry.id, entry.fileName) === object.name
+      gcsObjectName(entry.id, entry.fileName, entry.companyId) === object.name
     )
       continue;
     const ref = { firestoreId: namespaceId, name: object.name, uri };
@@ -464,7 +472,7 @@ export function planReconciliation({ firestore = [], gcs = [], vertex = [], opti
       continue;
     }
     if (!entry.fileName) continue;
-    const objectName = gcsObjectName(entry.id, entry.fileName);
+    const objectName = gcsObjectName(entry.id, entry.fileName, entry.companyId);
     const uri = `${bucketPrefix}${objectName}`;
     Object.assign(ref, { name: objectName, uri });
     if (!live.has(objectName)) add(entryYoung(entry) ? 'pending' : 'missing_object', ref);
