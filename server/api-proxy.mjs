@@ -1,5 +1,6 @@
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { maxFileBytes } from '../shared/document-submissions.mjs';
 import { autofillFileBytes, workspaceLimits } from './workspace-limits.mjs';
 import { autofillErrors, digestErrors } from './account-errors.mjs';
 import {
@@ -43,6 +44,10 @@ const unavailable = {
 };
 const tooLarge = { code: 'REQUEST_TOO_LARGE', error: 'That request is too large.' };
 const fileTooLarge = { code: 'FILE_TOO_LARGE', error: 'Each file must be 5 MB or smaller.' };
+const submissionFileTooLarge = {
+  code: 'FILE_TOO_LARGE',
+  error: 'Each file must be 25 MB or smaller.',
+};
 const autofillTooLarge = autofillErrors.tooLarge();
 const digestTooLarge = digestErrors.tooLarge();
 // Raw file uploads (application/octet-stream POSTs): the API path, the body
@@ -62,6 +67,13 @@ const uploads = new Map([
     {
       limit: autofillFileBytes,
       tooLarge: { code: digestTooLarge.code, error: digestTooLarge.message },
+    },
+  ],
+  [
+    '/me/document-submissions',
+    {
+      limit: maxFileBytes,
+      tooLarge: submissionFileTooLarge,
     },
   ],
 ]);
