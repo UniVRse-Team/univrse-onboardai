@@ -51,21 +51,25 @@ flowchart TD
         UI --> Pages
     end
 
-    subgraph GCP_Cloud_Run["Google Cloud Run (asia-southeast1)"]
-        Web["onboardai-web (Frontend Server / Reverse Proxy)\n1 vCPU / 512 MiB\nPublic: allUsers"]
-        API["onboardai-api (Express 5 Backend API)\n1 vCPU / 1 GiB | CPU Boost\nPrivate: Serverless Auth"]
-        TTS["onboardai-tts (Kokoro Voice Service)\n2 vCPU / 2 GiB | ONNX Runtime\nPrivate: Serverless Auth"]
+    subgraph CloudRun["Google Cloud Run (asia-southeast1)"]
+        direction TB
+        Web["onboardai-web (Public Reverse Proxy & Vite SPA)\n1 vCPU / 512 MiB\nPublic: allUsers"]
+        API["onboardai-api (Express 5 Backend & LangGraph)\n1 vCPU / 1 GiB | CPU Boost\nPrivate: Serverless Auth"]
+        TTS["onboardai-tts (Kokoro ONNX Voice Microservice)\n2 vCPU / 2 GiB | Concurrency Limit: 8\nPrivate: Serverless Auth"]
 
-        Web -- "OIDC ID Token Proxy" --> API
-        API -- "OIDC ID Token" --> TTS
+        MigrateJob["Job: onboardai-db-migrate\n(PostgreSQL & Firestore Migrations)"]
+        ReconcileJob["Job: onboardai-docs-reconcile\n(Hourly Firestore-GCS-Vertex Sync)"]
+
+        Web -- "OIDC ID Token Proxy\n(X-Serverless-Authorization)" --> API
+        API -- "OIDC ID Token\n(X-Serverless-Authorization)" --> TTS
     end
 
-    subgraph AI_Services["Google Cloud AI & Vertex AI"]
-        GeminiChat["Gemini 3.5 Flash Lite\n(LangGraph Conversation Workflow)"]
-        GeminiTTS["Gemini 3.8 Flash TTS\n(Primary Cloud Voice - Sulafat)"]
+    subgraph GenAI["Google Cloud AI & Vertex AI"]
+        GeminiChat["Gemini 3.5 Flash Lite\n(LangGraph Conversational Workflow)"]
+        GeminiTTS["Gemini 3.8 Flash TTS\n(Primary Cloud Voice: Sulafat)"]
         CheckGrader["Gemini 3.8 Flash\n(Check Grader & Rubric Evaluator)"]
         VertexSearch["Vertex AI Search & Discovery Engine\n(Enterprise Tier / Layout-based Chunking)"]
-        AgentEngine["Vertex AI Agent Engine (ADK)\n(Onboarding Checklist Reasoning Engine)"]
+        AgentEngine["Vertex AI Agent Engine (ADK Python 3.13)\n(Onboarding Checklist Reasoning Engine)"]
 
         API --> GeminiChat
         API --> GeminiTTS
@@ -74,60 +78,59 @@ flowchart TD
         API --> AgentEngine
     end
 
-    subgraph Data_Storage["Data Storage & Databases"]
+    subgraph DataStorage["Data Storage & Databases"]
         CloudSQL[("Cloud SQL PostgreSQL 17\n(User Accounts, Sessions, Roles, Audit Logs)")]
-        Firestore[("Cloud Firestore (Native Mode)\n(Onboarding Progress, Chat Checkpoints,\nDocument Metadata, Footprints)")]
-        DocsBucket["GCS: Company Docs Bucket\n(<project>-onboardai-docs)"]
-        EmpBucket["GCS: Private Employee Docs Bucket\n(<project>-onboardai-employee-docs)"]
+        Firestore[("Cloud Firestore Native Mode\n(Onboarding Progress, Chat Checkpoints,\nDocument Metadata, Footprints)")]
+        DocsBucket["GCS: Company Docs Bucket\n(project-...-onboardai-docs)"]
+        EmpBucket["GCS: Private Employee Docs Bucket\n(project-...-onboardai-employee-docs\nAir-Gapped from Search)"]
+        TFStateBucket["GCS: Terraform State Bucket\n(project-...-tfstate)"]
 
-        API -- "Unix Domain Socket\n(IAM Connector)" --> CloudSQL
+        API -- "Unix Domain Socket\n(/cloudsql/<connection>)\nSSL ENCRYPTED_ONLY" --> CloudSQL
         API --> Firestore
         API --> DocsBucket
         API --> EmpBucket
-        DocsBucket -. "Automated Document Import" .-> VertexSearch
+        DocsBucket -. "Automatic Document Import" .-> VertexSearch
     end
 
-    subgraph Automation["Operations & Monitoring"]
-        Scheduler["Cloud Scheduler\n(Hourly Docs Reconcile Trigger)"]
-        ReconcileJob["Cloud Run Job: docs-reconcile\n(Firestore - GCS - Vertex Search Sync)"]
-        MigrateJob["Cloud Run Job: db-migrate\n(PostgreSQL & Firestore Migrations)"]
-        Monitoring["Cloud Monitoring & Alerting\n(Latency, 5xx, Drift, Uptime Checks)"]
+    subgraph SecurityOps["Security, Operations & Automation"]
+        Scheduler["Cloud Scheduler\n(Hourly Cron Trigger: 7m / 37m offset)"]
+        Secrets["Secret Manager\n(DATABASE_URL, DB Passwords, MCP Tokens)"]
+        ArtifactReg["Artifact Registry (Docker)\n(asia-southeast1/onboardai[-staging])"]
+        Monitoring["Cloud Monitoring & Alerting\n(Uptime Checks, Latency, 5xx, Sync Drift)"]
+        WIF["Workload Identity Federation\n(GitHub Actions Keyless Deployment)"]
 
         Scheduler --> ReconcileJob
         ReconcileJob --> Firestore
         ReconcileJob --> DocsBucket
         ReconcileJob --> VertexSearch
+        API -. "Read Secrets" .-> Secrets
+        MigrateJob -. "Read Secrets" .-> Secrets
+        WIF -. "Deploy Images" .-> ArtifactReg
+        WIF -. "Deploy Services" .-> CloudRun
     end
 
     Client -->|HTTPS| Web
 ```
 
-### GCP Infrastructure Components
+### GCP Services Breakdown & Usage
 
-The entire infrastructure is managed via **Terraform** (`terraform/onboardai/`) across Staging and Production:
+The production infrastructure is verified live in Google Cloud (`project-65a9b676-abdb-4393-bc1`) and provisioned declaratively via Terraform (`terraform/onboardai/`). Below is the technical usage and role of each service:
 
-1. **Cloud Run Microservices (`asia-southeast1`, Gen2 execution environment)**:
-   - **`onboardai-web`**: The public entry point serving the Vite production build and reverse-proxying API calls. Automatically mints Google-signed OIDC ID tokens via the GCP metadata server to authorize requests to downstream services.
-   - **`onboardai-api`**: Private microservice hosting the Express 5 application, Gemini LangGraph workflows, verification grader, and database integrations.
-   - **`onboardai-tts`**: Private microservice running the Kokoro TTS engine on ONNX Runtime with concurrency controls (max 8 concurrent voice renders; 9th returns `VOICE_BUSY`).
-2. **Cloud SQL PostgreSQL 17**:
-   - Enterprise tier database managing credentials, authentication states, department structures, and account audit logs.
-   - Accessible strictly via Cloud Run's native Unix domain socket connector (`/cloudsql/<connection_name>`) with `ENCRYPTED_ONLY` SSL enforcement and no public IP exposure.
-   - Database credentials are generated dynamically via Terraform `password_wo` and managed in **Secret Manager**, never appearing in `.tfstate`.
-3. **Cloud Firestore (Native Mode)**:
-   - Production database `(default)` and Staging database `onboardai-staging` in `asia-southeast1`.
-   - Stores employee onboarding progress, task verification records, chat session states, LangGraph checkpoints, and company document metadata.
-   - Includes automatic TTL expiration policies (e.g., `purgeAt` on `employeeImports`).
-4. **Cloud Storage Buckets**:
-   - **Company Documents Bucket (`<project>-onboardai-docs`)**: Stores approved organizational policies, SOPs, and handbooks indexed by Vertex AI Search.
-   - **Employee Submissions Bucket (`<project>-onboardai-employee-docs`)**: Private, access-controlled bucket for sensitive employee identity proofs, certificates, and tax documents. **Deliberately air-gapped from Vertex AI Search and search indexing.**
-5. **Vertex AI Search & Discovery Engine**:
-   - Enterprise search tier configured with layout-based document parsing and hierarchical heading-aware chunking (500 tokens).
-   - Ingestion is triggered directly on file upload with automated metadata association.
-6. **Vertex AI Agent Engine (ADK)**:
-   - Python 3.13 Google Agent Development Kit (`google-adk`) service executing the autonomous checklist agent (`onboarding-checklist`). Evaluates employee readiness, detects onboarding blockers, and suggests action cards.
-7. **Cloud Scheduler & Reconcile Jobs**:
-   - Cloud Run jobs executing hourly three-way consistency reconciliation between Firestore, Cloud Storage, and Discovery Engine.
+| Service                                 | Cloud Resource(s)                                                                                               | Primary Purpose & Usage in OnboardAi                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| :-------------------------------------- | :-------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Google Cloud Run (Services)**         | `onboardai-web[-staging]`<br>`onboardai-api[-staging]`<br>`onboardai-tts[-staging]`                             | **Containerized Serverless Execution**:<br>• `web`: Public-facing reverse proxy serving Vite SPA; uses Cloud Run metadata server to mint Google-signed OIDC ID tokens for private backend requests.<br>• `api`: Private Express 5 application orchestrating Gemini LangGraph workflows, verification checks, and data operations.<br>• `tts`: Dedicated private microservice executing Kokoro TTS on ONNX Runtime with concurrency controls (max 8 concurrent voice renders; 9th returns `VOICE_BUSY`). |
+| **Google Cloud Run (Jobs)**             | `onboardai-db-migrate[-staging]`<br>`onboardai-docs-reconcile[-staging]`                                        | **Batch & Maintenance Tasks**:<br>• `db-migrate`: Runs automated PostgreSQL advisory-locked schema migrations and Firestore document migrations before traffic shifts to new revisions.<br>• `docs-reconcile`: Scheduled job comparing Firestore metadata, Cloud Storage files, and Vertex AI Search index, repairing orphaned or missing documents.                                                                                                                                                    |
+| **Cloud SQL for PostgreSQL 17**         | `onboardai-db`<br>`onboardai-db-staging`                                                                        | **Relational Identity & Audit Vault**:<br>Stores user credentials (argon2id hashes), assigned Employee IDs (e.g., `PE-0001`), department structures, session records, and immutable security audit logs. Connected securely via Cloud Run's native Unix socket (`/cloudsql/<connection>`) with `ENCRYPTED_ONLY` SSL and IAM connector enforcement.                                                                                                                                                      |
+| **Cloud Firestore (Native Mode)**       | `(default)` (Production)<br>`onboardai-staging` (Staging)                                                       | **High-Throughput NoSQL State Store**:<br>Stores employee onboarding milestone progress, task verification records, chat session checkpoints (LangGraph state saver), and active company document metadata. Includes automatic TTL expiration policies (e.g., `purgeAt` on `employeeImports`).                                                                                                                                                                                                          |
+| **Google Cloud Storage (GCS)**          | `...-onboardai-docs[-staging]`<br>`...-onboardai-employee-docs[-staging]`<br>`...-tfstate`                      | **Segregated Object Repositories**:<br>• `docs`: Stores approved organizational policies, handbooks, and SOPs indexed by Vertex AI Search.<br>• `employee-docs`: Private repository for confidential employee onboarding submissions (IDs, certificates, tax forms). **Air-gapped and excluded from search indexing.**<br>• `tfstate`: Remote state and lock storage for Terraform.                                                                                                                     |
+| **Vertex AI Search & Discovery Engine** | `onboardai-search[-staging]`<br>`onboardai-docs[-staging]`                                                      | **Enterprise Semantic Retrieval**:<br>Indexes approved company documents using layout-based document parsing (PDF, DOCX, TXT) and hierarchical heading-aware chunking (500 tokens). Serves extractive answers and citations to Gemini chat workflows.                                                                                                                                                                                                                                                   |
+| **Google Gemini Models (Vertex AI)**    | `gemini-3.5-flash-lite`<br>`gemini-3.8-flash`<br>`gemini-3.8-flash-tts`                                         | **Generative AI & Multimodal Intelligence**:<br>• `3.5-flash-lite`: Conversational dialogue engine powering Alya's contextual answers.<br>• `3.8-flash`: Grading engine evaluating written employee onboarding checks against rubrics with prompt-injection defense.<br>• `3.8-flash-tts`: Cloud text-to-speech engine using voice profile `Sulafat`.                                                                                                                                                   |
+| **Vertex AI Agent Engine (ADK)**        | `onboardai-checklist[-staging]`                                                                                 | **Autonomous Checklist Reasoning Engine**:<br>Python 3.13 Google Agent Development Kit (`google-adk`) service evaluating employee onboarding progress, identifying blockers, and proposing next steps.                                                                                                                                                                                                                                                                                                  |
+| **Google Cloud Scheduler**              | `onboardai-docs-reconcile[-staging]`                                                                            | **Automated Cron Trigger**:<br>Triggers the hourly `docs-reconcile` Cloud Run job (minute 7 in prod, minute 37 in staging) using service account OIDC authentication.                                                                                                                                                                                                                                                                                                                                   |
+| **Google Secret Manager**               | `onboardai-database-url[-staging]`<br>`onboardai-db-password[-staging]`<br>`onboardai-intake-mcp-token-staging` | **Runtime Secrets Management**:<br>Holds database connection URLs, Cloud SQL passwords, and internal service tokens. Provisioned write-only via Terraform (`password_wo`) so secrets never leak into `.tfstate` files.                                                                                                                                                                                                                                                                                  |
+| **Google Artifact Registry**            | `asia-southeast1/onboardai`<br>`asia-southeast1/onboardai-staging`                                              | **Container Image Registry**:<br>Regional Docker repository hosting built container images for Cloud Run deployments.                                                                                                                                                                                                                                                                                                                                                                                   |
+| **Cloud Monitoring & Logging**          | Log Views, Metrics & Alert Policies                                                                             | **Production Observability & SLA Monitoring**:<br>Multi-region uptime checks (`/web-health`, `/api/health`), 5xx alert policies, p95 API latency thresholds, and document reconciliation drift monitors notifying engineering teams.                                                                                                                                                                                                                                                                    |
+| **Workload Identity Federation (WIF)**  | `onboardai-github[-staging]`                                                                                    | **Keyless CI/CD Security**:<br>Enables GitHub Actions workflows to authenticate to Google Cloud via short-lived OIDC tokens, eliminating long-lived service account keys.                                                                                                                                                                                                                                                                                                                               |
 
 ---
 
