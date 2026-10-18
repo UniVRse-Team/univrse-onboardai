@@ -41,6 +41,8 @@ test('HR signs in with a session cookie that is HttpOnly, SameSite=Strict, /api-
     );
     const body = await response.json();
     assert.deepEqual(Object.keys(body.account).sort(), [
+      'company',
+      'companyId',
       'id',
       'mustChangePassword',
       'role',

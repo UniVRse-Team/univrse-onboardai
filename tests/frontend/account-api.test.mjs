@@ -19,6 +19,14 @@ test('error codes map to app-wide actions', () => {
     accountErrorAction({ status: 403, code: 'PASSWORD_CHANGE_REQUIRED' }),
     'change-password',
   );
+  assert.equal(
+    accountErrorAction({ status: 403, code: 'COMPANY_ACCOUNT_REQUIRED' }),
+    'company-account-required',
+  );
+  assert.equal(
+    accountErrorAction({ status: 403, code: 'ADMIN_ROLE_REQUIRED' }),
+    'admin-role-required',
+  );
   assert.equal(accountErrorAction({ status: 401, code: 'SIGN_IN_FAILED' }), null);
   assert.equal(accountErrorAction({ status: 429, code: 'ACCOUNT_LOCKED' }), null);
   assert.equal(accountErrorAction({ status: 401, code: 'AUTH_REQUIRED' }), null);

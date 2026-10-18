@@ -43,12 +43,19 @@ export async function createTestDatabase() {
   // pg-mem names an inline CHECK <table>_constraint_<n> where PostgreSQL names
   // it <table>_<column>_check, so migration 004's DROP CONSTRAINT of the 2-letter
   // prefix rule would find nothing. The live run covers the real name.
+  // Migration 005 drops the inline role rule (accounts_role_check in
+  // PostgreSQL, the third inline CHECK of 001 in pg-mem) the same way.
   const pgMemNames = (text) =>
     typeof text === 'string'
-      ? text.replace(
-          'DROP CONSTRAINT IF EXISTS employee_id_counters_prefix_check',
-          'DROP CONSTRAINT IF EXISTS employee_id_counters_constraint_1',
-        )
+      ? text
+          .replace(
+            'DROP CONSTRAINT IF EXISTS employee_id_counters_prefix_check',
+            'DROP CONSTRAINT IF EXISTS employee_id_counters_constraint_1',
+          )
+          .replace(
+            'DROP CONSTRAINT IF EXISTS accounts_role_check;',
+            'DROP CONSTRAINT IF EXISTS accounts_constraint_3;',
+          )
       : text;
 
   async function query(rawText, values) {

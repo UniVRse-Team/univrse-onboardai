@@ -5,6 +5,7 @@ import { defaultHrSection, hrSections } from './hr-navigation.mjs';
 import HrEmployees from './HrEmployees';
 import HrCompanyKnowledge from './HrCompanyKnowledge';
 import HrSettings from './HrSettings';
+import HrCompanyProfile from './HrCompanyProfile';
 import HrDocumentSubmissions from '../documents/HrDocumentSubmissions';
 import { departmentCache } from './use-departments';
 import SignedInPeopleSupport from './SignedInPeopleSupport';
@@ -58,6 +59,11 @@ export default function HrWorkspace({ account, onSignOut }) {
           ))}
         </nav>
         <div className="account-session">
+          {account?.company?.name && (
+            <span className="account-company-name">
+              <strong>{account.company.name}</strong>
+            </span>
+          )}
           <span className="account-signed-in">
             Signed in as <strong>{account.username}</strong>
           </span>
@@ -73,6 +79,8 @@ export default function HrWorkspace({ account, onSignOut }) {
           <HrDocumentSubmissions />
         ) : view === 'people' ? (
           <SignedInPeopleSupport headingRef={headingRef} />
+        ) : view === 'profile' ? (
+          <HrCompanyProfile headingRef={headingRef} />
         ) : view === 'settings' ? (
           <HrSettings headingRef={headingRef} />
         ) : (

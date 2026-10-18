@@ -195,9 +195,19 @@ test('createVertexDocumentSync uploads to GCS + triggers documents:import and de
     /dataStores\/onboardai-docs\/branches\/default_branch\/documents:import$/,
   );
   assert.deepEqual(JSON.parse(calls[1].body), {
-    gcsSource: {
-      inputUris: [`gs://test-proj-onboardai-docs/${docId}/Notes.txt`],
-      dataSchema: 'content',
+    inlineSource: {
+      documents: [
+        {
+          id: docId,
+          content: {
+            uri: `gs://test-proj-onboardai-docs/${docId}/Notes.txt`,
+            mimeType: 'text/plain; charset=utf-8',
+          },
+          structData: {
+            companyId: 'univrse',
+          },
+        },
+      ],
     },
     reconciliationMode: 'INCREMENTAL',
   });

@@ -853,3 +853,335 @@ const generalChips = () => [
 export function builtInQuickQuestions() {
   return Object.fromEntries(tracks.map((track) => [track, generalChips()]));
 }
+
+// Starter content pack (issue #86, Option A). Company-neutral, four required
+// steps per area, no check steps and no company facts in the text.
+export const starterTemplateVersion = 1;
+
+const starterDocumentationEmployee = [
+  hrVerify(
+    'contract',
+    'Sign your employment contract',
+    'Review and sign your employment contract, then mark it as submitted. HR verifies it.',
+    'How do I sign my employment contract?',
+    briefing(
+      null,
+      'Review your employment contract carefully, checking your role, start date, compensation and terms before signing. Once signed and submitted, HR verifies your contract.',
+    ),
+  ),
+  hrVerify(
+    'personal-bank-details',
+    'Submit your personal and bank details',
+    'Provide your personal, banking and tax information for payroll setup. HR verifies them.',
+    'What personal and bank details do I need to submit?',
+    briefing(
+      null,
+      'Submit your personal contact information and the bank account details where your salary should be paid. HR verifies your details for payroll setup.',
+    ),
+  ),
+  hrVerify(
+    'tax-id-documents',
+    'Submit your ID and tax documents',
+    'Provide your identity card or passport and relevant tax documents. HR verifies them.',
+    'What ID and tax documents do I need to submit?',
+    briefing(
+      null,
+      'Provide a valid identification document such as your identity card or passport, along with any relevant tax documents or numbers. HR verifies them.',
+    ),
+  ),
+  hrVerify(
+    'emergency-contact',
+    'Submit your emergency contact details',
+    'Provide the contact information for someone to reach in an emergency. HR verifies it.',
+    'How do I submit my emergency contact details?',
+    briefing(
+      null,
+      'Provide the name, relationship and phone number of a trusted emergency contact who can be reached if an urgent situation arises. HR verifies your details.',
+    ),
+  ),
+];
+
+const starterDocumentationIntern = [
+  hrVerify(
+    'contract',
+    'Sign your internship agreement',
+    'Review and sign your internship agreement, then mark it as submitted. HR verifies it.',
+    'How do I sign my internship agreement?',
+    briefing(
+      null,
+      'Review your internship agreement covering your internship period, stipend and learning objectives before signing. Once signed and submitted, HR verifies it.',
+    ),
+  ),
+  starterDocumentationEmployee[1],
+  starterDocumentationEmployee[2],
+  starterDocumentationEmployee[3],
+];
+
+const starterDocumentationContractor = [
+  hrVerify(
+    'contract',
+    'Sign your service agreement',
+    'Review and sign your service agreement, then mark it as submitted. HR verifies it.',
+    'How do I sign my service agreement?',
+    briefing(
+      null,
+      'Review your service agreement outlining the scope of work, deliverables, engagement terms and fees before signing. Once signed and submitted, HR verifies it.',
+    ),
+  ),
+  hrVerify(
+    'personal-bank-details',
+    'Submit your billing and bank details',
+    'Provide your billing details and bank account for payment processing. HR verifies them.',
+    'Which billing and bank details do I need to submit?',
+    briefing(
+      null,
+      'Provide your billing details, tax identification and bank account information for invoice processing. HR verifies these details upon submission.',
+    ),
+  ),
+  hrVerify(
+    'tax-id-documents',
+    'Submit your identification document',
+    'Provide a copy of your identity card or passport. HR verifies it.',
+    'What identification document do I need to submit?',
+    briefing(
+      null,
+      'Provide a copy of your valid identity card or passport to verify your identity for contractor records. HR verifies the document.',
+    ),
+  ),
+  hrVerify(
+    'confidentiality-agreement',
+    'Sign the confidentiality agreement (NDA)',
+    'Sign the non-disclosure and confidentiality agreement. HR verifies it.',
+    'What does the confidentiality agreement cover?',
+    briefing(
+      null,
+      'The confidentiality agreement protects confidential company information, customer data and intellectual property. Sign and submit it for HR verification.',
+    ),
+  ),
+];
+
+const starterPolicies = [
+  self(
+    'company-rules',
+    'Company rules and workplace expectations',
+    'Review company guidelines, working hours and general workplace conduct.',
+    'What are the company rules and working hours?',
+    briefing(
+      null,
+      'Read and understand the company policies regarding working hours, workplace expectations and attendance. Reach out to HR or your manager if you have questions.',
+    ),
+  ),
+  self(
+    'conduct-safety',
+    'Workplace conduct & security safety',
+    'Learn how we maintain a safe, respectful environment and protect systems and data.',
+    'What should I know about workplace conduct and security?',
+    briefing(
+      null,
+      'Treat colleagues with respect and adhere to workplace safety standards. Keep passwords private, follow account security guidelines, and report suspicious activities promptly.',
+    ),
+  ),
+  self(
+    'data-privacy',
+    'Privacy & data handling',
+    'Understand how customer and company data must be safeguarded.',
+    'How should I handle sensitive and personal data?',
+    briefing(
+      null,
+      'Customer and internal company information is confidential. Only access and use data necessary for your role, and protect it according to applicable privacy standards.',
+    ),
+  ),
+  self(
+    'responsible-ai',
+    'Responsible AI use',
+    'Learn approved AI practices and what information must never be shared.',
+    'Which AI tools am I allowed to use at work?',
+    briefing(
+      null,
+      'Use only approved AI tools in accordance with company guidance. Never input confidential data, passwords or proprietary source code into unapproved AI tools.',
+    ),
+  ),
+];
+
+const starterAlignment = [
+  self(
+    'company-overview',
+    'What the company does',
+    'Learn what the company builds, its products and who its customers are.',
+    'What does the company do, and who are our customers?',
+    briefing(
+      null,
+      'Learn about the company, its core products and services, and the customers we serve. Ask Alya about the company overview to learn key facts from the company profile.',
+    ),
+  ),
+  self(
+    'purpose-values',
+    'Purpose, mission and values',
+    'Understand the company’s purpose, vision and guiding principles.',
+    'What are the company’s mission, vision and values?',
+    briefing(
+      null,
+      'Learn about our mission, vision and the core values that guide how we work and make decisions. Ask Alya to explore the values listed in the company profile.',
+    ),
+  ),
+  self(
+    'team-structure',
+    'Team and department structure',
+    'Get to know the departments across the company and how teams collaborate.',
+    'How do teams and departments work together?',
+    briefing(
+      null,
+      'Understand how different departments and teams collaborate across the organization. Check the company contacts in your profile to see who leads each function.',
+    ),
+  ),
+  self(
+    'your-contribution',
+    'How your role contributes',
+    'Understand how your daily work connects to team and company goals.',
+    'How does my role contribute to company goals?',
+    briefing(
+      null,
+      'Understand how your responsibilities fit into your team and the broader organization, helping achieve shared goals and milestones.',
+    ),
+  ),
+];
+
+const starterRoleTools = [
+  self(
+    'work-accounts',
+    'Set up work accounts & credentials',
+    'Activate your company email and core system accounts.',
+    'How do I set up my work accounts?',
+    briefing(
+      null,
+      'Log into your primary work email and communication platforms. Follow setup prompts to enable two-factor authentication for enhanced security.',
+    ),
+  ),
+  self(
+    'shared-files',
+    'Access shared files and documentation',
+    'Locate team documentation, templates and shared drives.',
+    'Where do I find team documentation and shared files?',
+    briefing(
+      null,
+      'Confirm access to shared team folders, drives and knowledge bases. Familiarize yourself with key documentation and guides relevant to your role.',
+    ),
+  ),
+  self(
+    'communication-tools',
+    'Set up communication tools',
+    'Join team chat channels and collaboration spaces.',
+    'Which communication tools and channels should I join?',
+    briefing(
+      null,
+      'Set up your messaging tools, join key team and department channels, and introduce yourself to your teammates.',
+    ),
+  ),
+  self(
+    'ai-readiness-training',
+    'AI readiness training',
+    'Complete the introductory AI training to learn effective practices.',
+    'What is the AI readiness training?',
+    briefing(
+      null,
+      'Complete the self-assessment and initial learning module on utilizing AI tools safely, effectively and productively in your role.',
+    ),
+  ),
+];
+
+const starterTeamSupport = [
+  self(
+    'meet-manager',
+    'Meet with your manager',
+    'Have an initial check-in meeting with your manager to align on goals and expectations.',
+    'What should I discuss with my manager in our first meeting?',
+    briefing(
+      null,
+      'Schedule a meeting with your manager to review initial priorities, 30-day goals, communication preferences and any questions you have.',
+    ),
+  ),
+  self(
+    'team-channels',
+    'Connect with team channels',
+    'Learn where questions, announcements and daily updates are shared.',
+    'Where are daily team updates and announcements shared?',
+    briefing(
+      null,
+      'Get oriented with team check-ins, standup channels and where team members share progress and ask for assistance.',
+    ),
+  ),
+  self(
+    'who-to-ask',
+    'Know who to ask for help',
+    'Learn how to get support for IT, HR and operational questions.',
+    'Who should I contact for help with HR or IT issues?',
+    briefing(
+      null,
+      'Identify point persons for IT support, HR inquiries and office facilities so you know where to reach out when you need assistance.',
+    ),
+  ),
+  self(
+    'meet-colleagues',
+    'Meet colleagues and teammates',
+    'Schedule short introductory chats with team members and key collaborators.',
+    'How can I connect with my teammates?',
+    briefing(
+      null,
+      'Introduce yourself to colleagues within and across teams to understand their roles and begin building strong collaborative working relationships.',
+    ),
+  ),
+  {
+    ...self(
+      'working-preferences',
+      'Share your working preferences or support needs (optional)',
+      'Tell your manager or HR how you prefer to work or about any support you need. This never affects your progress.',
+      'How can I share my working preferences or support needs?',
+      null,
+    ),
+    required: false,
+  },
+];
+
+const starterStepsByTrack = {
+  employee: {
+    documentation: starterDocumentationEmployee,
+    policies: starterPolicies,
+    alignment: starterAlignment,
+    'role-tools': starterRoleTools,
+    'team-support': starterTeamSupport,
+  },
+  intern: {
+    documentation: starterDocumentationIntern,
+    policies: starterPolicies,
+    alignment: starterAlignment,
+    'role-tools': starterRoleTools,
+    'team-support': starterTeamSupport,
+  },
+  contractor: {
+    documentation: starterDocumentationContractor,
+    policies: starterPolicies,
+    alignment: starterAlignment,
+    'role-tools': starterRoleTools,
+    'team-support': starterTeamSupport,
+  },
+};
+
+export function starterTemplate(track = defaultTrack) {
+  const chosen = tracks.includes(track) ? track : defaultTrack;
+  return {
+    track: chosen,
+    version: starterTemplateVersion,
+    threshold: completionThreshold,
+    areas: areaOrder.map((areaId) => ({
+      id: areaId,
+      icon: areaText[areaId].icon,
+      title: areaText[areaId].title,
+      description: areaText[areaId].description,
+      steps: starterStepsByTrack[chosen][areaId].map(({ slug, briefing: brief, ...step }) => ({
+        id: `${areaId}.${slug}`,
+        ...step,
+        briefing: brief ? { ...brief } : null,
+      })),
+    })),
+  };
+}

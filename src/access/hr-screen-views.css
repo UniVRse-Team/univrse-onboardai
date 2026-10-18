@@ -35,3 +35,43 @@
   gap: 10px;
   max-width: 520px;
 }
+.hr-preview-page.hr-screen .hr-screen-header .account-company-name {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: #1b2e47;
+  border: 1px solid #526986;
+  border-radius: 6px;
+  font-weight: 600;
+  color: #e3f3f4;
+  letter-spacing: 0.02em;
+}
+.hr-profile-view {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.hr-profile-card {
+  background: #ffffff;
+  border: 1px solid #c8d8e2;
+  border-radius: 8px;
+  padding: 20px 24px;
+}
+.hr-profile-card h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #1f3047;
+}
+.hr-profile-items {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hr-profile-item {
+  padding: 10px 14px;
+  background: #f7fafd;
+  border: 1px solid #e1ecf2;
+  border-radius: 6px;
+  font-size: 13px;
+}

@@ -8,6 +8,7 @@ import {
 
 const hr = { id: '1', username: 'H', role: 'hr', mustChangePassword: false };
 const emp = { id: '2', username: 'E', role: 'employee', mustChangePassword: false };
+const admin = { id: '0', username: 'A', role: 'admin', mustChangePassword: false };
 
 test('accounts off: only the sign-in page exists, there is no guest fallback', () => {
   for (const path of ['/', '/login'])
@@ -92,6 +93,67 @@ test('app-wide account actions', () => {
   assert.equal(r.account.mustChangePassword, true);
   assert.equal(r.to, null);
   assert.equal(afterAccountAction('change-password', null).account, null);
+  assert.deepEqual(afterAccountAction('company-account-required', admin), {
+    account: admin,
+    to: '/admin',
+    notice: false,
+  });
+  assert.deepEqual(afterAccountAction('admin-role-required', emp), {
+    account: emp,
+    to: '/onboarding',
+    notice: false,
+  });
+  assert.deepEqual(afterAccountAction('admin-role-required', hr), {
+    account: hr,
+    to: '/hr',
+    notice: false,
+  });
+});
+
+test('admin routing: admin lands on /admin and may only use /admin and /admin/companies/:id', () => {
+  assert.equal(landingPath(admin), '/admin');
+  assert.deepEqual(routeDecision({ accounts: true, account: admin, path: '/admin' }), {
+    type: 'render',
+  });
+  assert.deepEqual(
+    routeDecision({ accounts: true, account: admin, path: '/admin/companies/univrse' }),
+    { type: 'render' },
+  );
+  assert.deepEqual(routeDecision({ accounts: true, account: admin, path: '/dashboard' }), {
+    type: 'redirect',
+    to: '/admin',
+  });
+  assert.deepEqual(routeDecision({ accounts: true, account: admin, path: '/hr' }), {
+    type: 'redirect',
+    to: '/admin',
+  });
+  assert.deepEqual(routeDecision({ accounts: true, account: admin, path: '/login' }), {
+    type: 'redirect',
+    to: '/admin',
+  });
+  assert.deepEqual(
+    routeDecision({ accounts: true, account: admin, path: '/admin/companies/bad@id' }),
+    { type: 'redirect', to: '/admin' },
+  );
+});
+
+test('non-admin visiting /admin routes is redirected to landing', () => {
+  assert.deepEqual(routeDecision({ accounts: true, account: hr, path: '/admin' }), {
+    type: 'redirect',
+    to: '/hr',
+  });
+  assert.deepEqual(
+    routeDecision({ accounts: true, account: hr, path: '/admin/companies/univrse' }),
+    { type: 'redirect', to: '/hr' },
+  );
+  assert.deepEqual(routeDecision({ accounts: true, account: emp, path: '/admin' }), {
+    type: 'redirect',
+    to: '/onboarding',
+  });
+  assert.deepEqual(
+    routeDecision({ accounts: true, account: emp, path: '/admin/companies/univrse' }),
+    { type: 'redirect', to: '/onboarding' },
+  );
 });
 
 import { sessionCheckOutcome } from '../../src/access/account-routing.mjs';

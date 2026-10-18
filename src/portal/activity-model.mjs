@@ -23,6 +23,23 @@ const alignmentKey = {
   'role-contribution': 'roleContribution',
 };
 
+// Which verification activities the served handbook actually holds. A company
+// on the starter pack gets an empty handbook (policies {}, alignment {},
+// responsibilities [], supportRouting null, toolAccessSteps []), so none of
+// these are true for it and its steps render by their own completion instead.
+const isObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+export const hasPolicyActivity = (stepId, content) => isObject(content?.policies?.[stepId]);
+export const hasAlignmentActivity = (stepId, content) =>
+  isObject(content?.alignment?.[alignmentKey[String(stepId).replace('alignment.', '')]]);
+export const hasAccessActivity = (stepId, content) =>
+  Array.isArray(content?.toolAccessSteps) && content.toolAccessSteps.includes(stepId);
+export const hasResponsibilitiesActivity = (content) =>
+  isObject(content?.responsibilities) &&
+  (isObject(content.responsibilities.default) ||
+    Array.isArray(content.responsibilities.default) ||
+    isObject(content.responsibilities.byDepartment));
+export const hasRoutingActivity = (content) => isObject(content?.supportRouting);
+
 const AREA_TITLES = {
   policies: 'Policies & Safe Practices',
   alignment: 'Company Purpose & Alignment',
@@ -39,7 +56,8 @@ export function resolveActivity(id, onboarding, content) {
   const area = onboarding?.areas?.find((a) => a.id === areaOfId);
   const base = { id, areaId: areaOfId, areaTitle: AREA_TITLES[areaOfId] };
 
-  if (id === RESPONSIBILITIES_ACTIVITY)
+  if (id === RESPONSIBILITIES_ACTIVITY) {
+    if (!hasResponsibilitiesActivity(content)) return null;
     return {
       ...base,
       kind: 'checklist',
@@ -49,8 +67,10 @@ export function resolveActivity(id, onboarding, content) {
       requirement: 'Tick every item and save. This is an acknowledgement, not an assessment.',
       mandatory: false,
     };
+  }
   if (id === ROUTING_ACTIVITY) {
     const activity = content?.supportRouting;
+    if (!hasRoutingActivity(content)) return null;
     return {
       ...base,
       kind: 'quiz',
@@ -77,7 +97,8 @@ export function resolveActivity(id, onboarding, content) {
   if (areaOfId === 'policies' && step.completion !== 'check') return null;
   if (areaOfId === 'alignment' && !alignmentKey[id.replace('alignment.', '')]) return null;
   if (areaOfId === 'policies') {
-    const policy = content?.policies?.[id];
+    if (!hasPolicyActivity(id, content)) return null;
+    const policy = content.policies[id];
     return {
       ...common,
       kind: 'policy',
@@ -96,7 +117,8 @@ export function resolveActivity(id, onboarding, content) {
   }
   if (areaOfId === 'alignment') {
     const slug = id.replace('alignment.', '');
-    const activity = content?.alignment?.[alignmentKey[slug]];
+    if (!hasAlignmentActivity(id, content)) return null;
+    const activity = content.alignment[alignmentKey[slug]];
     return {
       ...common,
       kind: 'quiz',
@@ -113,7 +135,7 @@ export function resolveActivity(id, onboarding, content) {
     };
   }
   if (areaOfId === 'role-tools') {
-    if (content?.toolAccessSteps?.includes(id))
+    if (hasAccessActivity(id, content))
       return {
         ...common,
         kind: 'access',

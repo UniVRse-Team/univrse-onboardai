@@ -142,6 +142,8 @@ test('confirming creates one request per answer, records a help observation and 
     assert.deepEqual(list.body.requests, [
       {
         id,
+        companyId: 'univrse',
+        assignedHrAccountId: null,
         messageId,
         question: 'What should I wear?',
         alyaAnswer: answer.answer,
@@ -156,6 +158,7 @@ test('confirming creates one request per answer, records a help observation and 
         updatedAt: '2026-10-15T01:00:00.000Z',
         updatedBy: null,
         employee: { id: employee.account.id, username: 'PC-0001', name: 'Avery' },
+        assignedHr: null,
       },
     ]);
     assert.ok(!list.text.includes(chat.id));

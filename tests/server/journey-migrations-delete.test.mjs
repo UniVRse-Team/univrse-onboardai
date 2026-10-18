@@ -27,6 +27,9 @@ test('the journey migrations seed templates and chips once, and re-running chang
     'onboardingTemplates/contractor',
     'onboardingTemplates/employee',
     'onboardingTemplates/intern',
+    'onboardingTemplates/starter.contractor',
+    'onboardingTemplates/starter.employee',
+    'onboardingTemplates/starter.intern',
   ]);
   for (const track of ['employee', 'intern', 'contractor'])
     assert.deepEqual(firestore.read(`onboardingTemplates/${track}`), builtInTemplate(track));

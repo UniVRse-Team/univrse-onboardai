@@ -127,25 +127,31 @@ export function createCompanyKnowledge({
   // The company passages for a query: with the allowlist, the search and the
   // library snapshot run in parallel, then only passages of active documents
   // are kept (a library failure rejects with the 503 or 504).
-  async function search(query, signal) {
-    if (!active) return companyRetrieve(query, signal ? { signal } : undefined);
+  async function search(query, options) {
+    const opts = typeof options === 'object' && options !== null ? options : {};
+    const hasOptions = Boolean(opts.signal || opts.companyId);
+    if (!active) return companyRetrieve(query, hasOptions ? opts : undefined);
     const [found, current] = await Promise.all([
-      companyRetrieve(query, { ...(signal ? { signal } : {}), pageSize: ALLOWLIST_PAGE_SIZE }),
+      companyRetrieve(query, {
+        ...(opts.signal ? { signal: opts.signal } : {}),
+        pageSize: ALLOWLIST_PAGE_SIZE,
+        ...(opts.companyId ? { companyId: opts.companyId } : {}),
+      }),
       active.snapshot(),
     ]);
     return active.admit(found, current);
   }
 
   // Lists stored documents for the HR dashboard without exposing their text.
-  async function list() {
-    return (await documents.list()).map(documentView);
+  async function list(companyId = null) {
+    return (await documents.list(companyId)).map(documentView);
   }
 
   // GET /api/hr/company-knowledge: never the text.
-  async function snapshot() {
+  async function snapshot(companyId = null) {
     return {
       topics: onboardingDocumentTopics,
-      documents: await list(),
+      documents: await list(companyId),
       limits: workspaceLimits,
     };
   }
@@ -173,7 +179,7 @@ export function createCompanyKnowledge({
   // Stores a file read by readUploadedDocument ({ name, text, bytes, content? })
   // in the described area. Resolves to { id, duplicate: false, replaced: null }
   // or { id, duplicate: true, replaced: null }.
-  const add = (actorId, { category, name }, file, at) =>
+  const add = (actorId, { category, name }, file, at, companyId = 'univrse') =>
     afterChange(async () => {
       const added = await documents.add(
         {
@@ -186,6 +192,7 @@ export function createCompanyKnowledge({
         },
         actorId,
         at,
+        companyId,
       );
       return { id: added.id, duplicate: added.duplicate, replaced: null };
     });
@@ -194,7 +201,7 @@ export function createCompanyKnowledge({
   // `audit(detail, during)` runs the change inside the company_document_replaced
   // audit row. Resolves to { id: newId, duplicate: false, replaced: { id,
   // cleanup } } or { id: replaces, duplicate: true, replaced: null }.
-  const replace = (actorId, { category, name, replaces }, file, at, audit) =>
+  const replace = (actorId, { category, name, replaces }, file, at, audit, companyId = 'univrse') =>
     afterChange(() =>
       documents.replace(
         replaces,
@@ -210,20 +217,21 @@ export function createCompanyKnowledge({
         actorId,
         at,
         { audit },
+        companyId,
       ),
     );
 
   // PATCH /api/hr/company-knowledge/documents/:id { category }. `audit` runs
   // the move inside the company_document_moved audit row. Resolves to
   // { document } (no audit row when the document is already there).
-  async function move(id, body, audit) {
+  async function move(id, body, audit, companyId = null) {
     const category = body && typeof body === 'object' ? body.category : undefined;
     if (typeof category !== 'string' || !documentCategories.includes(category))
       throw requestErrors.topicRequired();
-    const before = await documents.get(id);
+    const before = await documents.get(id, companyId);
     if (before.category === category) return { document: documentView(before) };
     const moved = await audit({ documentId: before.id, from: before.category, to: category }, () =>
-      documents.move(id, category),
+      documents.move(id, category, companyId),
     );
     return { document: documentView(moved) };
   }
@@ -234,12 +242,13 @@ export function createCompanyKnowledge({
     describe,
     add,
     replace,
-    move: (id, body, audit) => afterChange(() => move(id, body, audit)),
-    remove: (id) => afterChange(() => documents.remove(id)),
+    move: (id, body, audit, companyId = null) =>
+      afterChange(() => move(id, body, audit, companyId)),
+    remove: (id, companyId = null) => afterChange(() => documents.remove(id, companyId)),
     // Gemini chat: always and only queries companyRetrieve (Vertex AI Search),
     // through the allowlist when there is one.
-    retrieve: (query, { signal } = {}) => search(query, signal),
+    retrieve: (query, options = {}) => search(query, options),
     // Document search: the same search and allowlist.
-    quote: (question, { signal } = {}) => search(question, signal),
+    quote: (question, options = {}) => search(question, options),
   };
 }

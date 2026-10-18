@@ -16,9 +16,13 @@ export class AccountApiError extends Error {
 
 // What the whole app must do for an error from any route, chat included.
 // 'sign-in': the session ended. 'change-password': a forced change is pending.
+// 'company-account-required' / 'admin-role-required': a role mismatch; the app
+// moves the browser to the page that role may use.
 export function accountErrorAction({ status, code } = {}) {
   if (status === 401 && code === 'SESSION_EXPIRED') return 'sign-in';
   if (status === 403 && code === 'PASSWORD_CHANGE_REQUIRED') return 'change-password';
+  if (status === 403 && code === 'COMPANY_ACCOUNT_REQUIRED') return 'company-account-required';
+  if (status === 403 && code === 'ADMIN_ROLE_REQUIRED') return 'admin-role-required';
   return null;
 }
 
@@ -152,4 +156,5 @@ export const accountApi = {
       method: 'PUT',
       body: { status },
     }),
+  hrCompany: (options) => accountRequest('/api/hr/company', options),
 };

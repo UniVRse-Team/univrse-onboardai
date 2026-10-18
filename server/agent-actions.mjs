@@ -185,7 +185,13 @@ export function createAgentActions({
     const track = await journey.trackFor(account);
     let outcome;
     try {
-      outcome = await agent.start({ accountId: account.id, track, text, signal });
+      outcome = await agent.start({
+        accountId: account.id,
+        track,
+        text,
+        signal,
+        companyId: account.companyId,
+      });
     } catch (error) {
       if (signal?.aborted) throw error;
       log(
