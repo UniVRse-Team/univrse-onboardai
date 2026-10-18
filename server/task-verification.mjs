@@ -1,6 +1,6 @@
 import { ChatError } from './chat-errors.mjs';
 import { journeyCollections } from './onboarding-collections.mjs';
-import { handbookTitle } from './onboarding-content.mjs';
+import { driveLinks, handbookTitle } from './onboarding-content.mjs';
 
 // Task verification content and storage for the four learning areas.
 //
@@ -11,21 +11,20 @@ import { handbookTitle } from './onboarding-content.mjs';
 // The quiz questions only ask what the matching briefing says; if HR edits a
 // briefing, review the questions for that step.
 
-export const DEFAULT_POLICY_PASSING_SCORE = 100;
+export const DEFAULT_POLICY_PASSING_SCORE = 80;
+const DEFAULT_ALIGNMENT_PASSING_SCORE = 100;
 
-const passingScoreFrom = (name, env) => {
+const passingScoreFrom = (name, env, fallback) => {
   const value = Number.parseInt(env[name] ?? '', 10);
-  return Number.isInteger(value) && value >= 1 && value <= 100
-    ? value
-    : DEFAULT_POLICY_PASSING_SCORE;
+  return Number.isInteger(value) && value >= 1 && value <= 100 ? value : fallback;
 };
 // Pass marks are server configuration, read per request; a client can never
 // lower them. POLICY_QUIZ_PASSING_SCORE for policy quizzes and
 // ALIGNMENT_CHECK_PASSING_SCORE for alignment knowledge checks (1-100).
 export const policyPassingScore = (env = process.env) =>
-  passingScoreFrom('POLICY_QUIZ_PASSING_SCORE', env);
+  passingScoreFrom('POLICY_QUIZ_PASSING_SCORE', env, DEFAULT_POLICY_PASSING_SCORE);
 export const alignmentPassingScore = (env = process.env) =>
-  passingScoreFrom('ALIGNMENT_CHECK_PASSING_SCORE', env);
+  passingScoreFrom('ALIGNMENT_CHECK_PASSING_SCORE', env, DEFAULT_ALIGNMENT_PASSING_SCORE);
 
 // Role/tool steps whose completion means "I was given access". They are proven
 // by an authorised coordinator confirmation, never by a checkbox.
@@ -37,9 +36,18 @@ export const TOOL_ACCESS_STEP_IDS = Object.freeze([
   'role-tools.professional-email',
 ]);
 
+// Alignment steps proven by an activity (matching or quiz). Other alignment steps
+// are confirmed by the employee like any self step.
+export const ALIGNMENT_ACTIVITY_STEP_IDS = Object.freeze([
+  'alignment.products-customers',
+  'alignment.mission-values',
+  'alignment.org-structure',
+  'alignment.role-contribution',
+]);
+
 export const APPROVED_HANDBOOK_METADATA = Object.freeze({
   title: handbookTitle,
-  publisher: 'UniVRse',
+  publisher: 'Company',
   contentRequirementNotice:
     'Content requirement: the full Employee Handbook document has not been added to this deployment. The summaries shown come from your onboarding plan. HR should add the full handbook so employees can read the source document.',
 });
@@ -48,7 +56,7 @@ export const APPROVED_HANDBOOK_METADATA = Object.freeze({
 export const CONTENT_REQUIREMENTS = Object.freeze([
   'Full Employee Handbook document and any separate privacy, data protection and responsible AI policy documents.',
   'Role-specific responsibilities and first-30-day goals for each role (the profile only holds title, department and manager).',
-  'A directory of team contacts and support channels beyond IT (it-help@univrse.example) and the contacts HR enters for the first day.',
+  'A directory of team contacts and support channels beyond IT (it-help@company.example) and the contacts HR enters for the first day.',
   'An integration or coordinator workflow to verify Google Workspace tool access automatically.',
 ]);
 
@@ -76,106 +84,134 @@ const match = (id, prompt, pairs, choices, explanation) => ({
 // step states; none relies on a rule the onboarding plan does not give.
 export const APPROVED_POLICIES = Object.freeze({
   'policies.employee-handbook': {
-    title: 'Company rules: working hours and dress code',
+    title: 'Employee Handbook: hours, conduct, claims and leave',
     sourceTitle: handbookTitle,
+    document: { title: 'Employee Handbook', url: driveLinks.handbook },
     objectives: [
-      'Know what to wear Monday to Thursday and on casual Friday.',
-      'Know what is never allowed, and who to ask when you are unsure.',
+      'Know the working hours, the Friday meeting and the weekday dress code.',
+      'Know how to report sickness, make claims and apply for leave.',
+      'Know how to protect passwords and company information.',
     ],
     quiz: {
       questions: [
         q(
           'q1',
-          'It is a Friday and you have no client meetings or events. Which outfit fits the dress code?',
+          'What are the normal working hours from Monday to Thursday?',
           [
-            ['a', 'Denim shorts, a plain T-shirt and clean sneakers'],
-            ['b', 'A gym tracksuit, a plain T-shirt and running shoes'],
-            ['c', 'Long jeans, a plain T-shirt and clean sneakers'],
+            ['a', '8:00 a.m. to 5:00 p.m.'],
+            ['b', '9:00 a.m. to 12:30 p.m. and 1:30 p.m. to 5:30 p.m.'],
+            ['c', '10:00 a.m. to 6:00 p.m.'],
           ],
-          'c',
-          'On casual Friday, long jeans, plain T-shirts and clean sneakers are fine. Short pants of any kind are not allowed on any working day, and sportswear is only for company sports events.',
+          'b',
+          'Monday to Thursday: morning work 9:00 a.m. to 12:30 p.m., a lunch break to 1:30 p.m., then afternoon work to 5:30 p.m.',
         ),
         q(
           'q2',
-          'It is Tuesday. Which dress code applies?',
+          'When is the regular internal meeting?',
           [
-            ['a', 'Casual Friday'],
-            ['b', 'Smart casual'],
-            ['c', 'Whatever is comfortable'],
+            ['a', 'Every Monday at 10:00 a.m.'],
+            ['b', 'Every Friday at 9:30 a.m.'],
+            ['c', 'On the first day of each month'],
           ],
           'b',
-          'The dress code is smart casual from Monday to Thursday.',
+          'The handbook records a regular internal meeting on Friday at 9:30 a.m.',
         ),
         q(
           'q3',
-          'It is Thursday and a colleague says you can wear your casual Friday outfit “because it is nearly Friday”. What is right?',
+          'Which outfit fits the weekday dress code?',
           [
-            ['a', 'They are right; Thursday is part of the casual week'],
-            [
-              'b',
-              'No. Smart casual applies Monday to Thursday; casual Friday outfits are for Friday',
-            ],
-            ['c', 'It is fine if you wear a jacket'],
+            ['a', 'Ripped jeans and a T-shirt'],
+            ['b', 'Short pants and slippers'],
+            ['c', 'Neat, smart-casual clothes'],
           ],
-          'b',
-          'The dress code is smart casual from Monday to Thursday; the casual Friday allowance is for Friday.',
+          'c',
+          'The handbook describes smart-casual attire and restricts ripped jeans, short pants, T-shirts and slippers on weekdays. Business attire may be required for client meetings.',
         ),
         q(
           'q4',
-          'It is a hot Friday and you want to wear tailored shorts to the office. What is right?',
+          'You are unwell and cannot come to work. What should you do?',
           [
-            ['a', 'Fine, because it is casual Friday'],
-            ['b', 'Fine if they are knee length'],
-            ['c', 'Not allowed: short pants of any kind are not allowed on any working day'],
+            ['a', 'Wait until you are back and explain then'],
+            [
+              'b',
+              'Tell your supervisor or manager as soon as possible, preferably before the workday begins',
+            ],
+            ['c', 'Ask a colleague to tell no one'],
           ],
-          'c',
-          'Short pants of any kind are not allowed on any working day, including casual Friday.',
+          'b',
+          'Inform your immediate supervisor or manager as soon as possible, preferably before the workday begins.',
         ),
         q(
           'q5',
-          'You exercised before work on a Wednesday and want to stay in your gym tracksuit all day. What is right?',
+          'Within how long should a medical certificate normally be sent after sick leave starts, where practicable?',
           [
-            ['a', 'Not allowed: sportswear is only for company sports events'],
-            ['b', 'Allowed if you change your shoes'],
-            ['c', 'Allowed because you are not meeting anyone'],
+            ['a', 'Six hours'],
+            ['b', 'Two weeks'],
+            ['c', 'The end of the month'],
           ],
           'a',
-          'Sportswear is only for company sports events.',
+          'Send the medical certificate to the manager or HR/Admin promptly, normally within six hours of the start of sick leave where practicable.',
         ),
         q(
           'q6',
-          'The company is holding a sports event next week. May you wear sportswear to it?',
+          'How soon after an expense should a claim normally be submitted?',
           [
-            ['a', 'No, sportswear is never allowed'],
-            ['b', 'Yes: sportswear is for company sports events'],
-            ['c', 'Only if your manager is not attending'],
+            ['a', 'Within 30 calendar days'],
+            ['b', 'Within one year'],
+            ['c', 'Only at the end of the financial year'],
           ],
-          'b',
-          'Sportswear is only for company sports events, so it fits there.',
+          'a',
+          'Submit the claim through the approved process within 30 calendar days of the expense, unless a different written deadline applies.',
         ),
         q(
           'q7',
-          'Which of these are fine on casual Friday? Select all that apply.',
+          'An expense will be above RM500. What is needed?',
           [
-            ['a', 'Long jeans'],
-            ['b', 'A plain T-shirt'],
-            ['c', 'Clean sneakers'],
-            ['d', 'Short pants'],
-            ['e', 'A gym tracksuit'],
+            ['a', 'Nothing, if you keep the receipt'],
+            ['b', 'Head of Department approval before the expense is incurred'],
+            ['c', 'Split it into smaller claims'],
           ],
-          ['a', 'b', 'c'],
-          'Long jeans, plain T-shirts and clean sneakers are fine on casual Friday. Short pants and sportswear are not.',
+          'b',
+          'Claims above RM500 need Head of Department approval before the expense is incurred. Never split an expense to avoid the threshold.',
         ),
         q(
           'q8',
-          'You are not sure whether an outfit is acceptable. What should you do?',
+          'How many days of annual leave do you have in your first year of employment?',
           [
-            ['a', 'Wear it and see if anyone mentions it'],
-            ['b', 'Ask your manager or People and Culture first'],
-            ['c', 'Ask IT'],
+            ['a', '12 days'],
+            ['b', '16 days'],
+            ['c', '22 days'],
           ],
-          'b',
-          'If you are unsure about an outfit, ask your manager or People and Culture first.',
+          'a',
+          'First year of employment: 12 days. It is earned pro-rata and tracked by calendar year.',
+        ),
+        q(
+          'q9',
+          'A colleague asks for your password to finish something quickly. What do you do?',
+          [
+            ['a', 'Share it, because they are a colleague'],
+            ['b', 'Share it only by chat'],
+            [
+              'c',
+              'Do not share it: never share passwords or authentication codes, even with colleagues',
+            ],
+          ],
+          'c',
+          'Use only your assigned account and do not share passwords or authentication codes, even with colleagues.',
+        ),
+        q(
+          'q10',
+          'You would like to work overtime this evening. What is right?',
+          [
+            [
+              'a',
+              'Overtime must be authorised in advance by your supervisor or designated manager',
+            ],
+            ['b', 'Staying late always creates an overtime payment'],
+            ['c', 'No approval is ever needed'],
+          ],
+          'a',
+          'Overtime must be authorised in advance, except where an urgent situation makes that impracticable. Staying late does not automatically create an entitlement.',
         ),
       ],
     },
@@ -193,7 +229,7 @@ export const APPROVED_POLICIES = Object.freeze({
           'q1',
           'An email that says it is from IT asks you to reply with your password so your account can be “verified”. What should you do?',
           [
-            ['a', 'Forward it to it-help@univrse.example without clicking its links'],
+            ['a', 'Forward it to it-help@company.example without clicking its links'],
             ['b', 'Reply with your password so that IT can verify you'],
             ['c', 'Open the link in it to check that the request is real'],
           ],
@@ -315,14 +351,14 @@ export const APPROVED_POLICIES = Object.freeze({
         ),
         q(
           'q2',
-          'Which law does UniVRse follow when handling personal data?',
+          'Which law does the company follow when handling personal data?',
           [
             ['a', 'Malaysia’s Personal Data Protection Act 2010'],
             ['b', 'No specific law; only company rules'],
             ['c', 'Singapore’s tax law'],
           ],
           'a',
-          'UniVRse handles personal data in line with Malaysia’s Personal Data Protection Act 2010.',
+          'The company handles personal data in line with Malaysia’s Personal Data Protection Act 2010.',
         ),
         q(
           'q3',
@@ -339,7 +375,7 @@ export const APPROVED_POLICIES = Object.freeze({
         ),
         q(
           'q4',
-          'You are leaving UniVRse next month. May you keep a copy of the source code you wrote?',
+          'You are leaving the company next month. May you keep a copy of the source code you wrote?',
           [
             ['a', 'Yes, you wrote it'],
             ['b', 'No: confidentiality applies during and after your employment'],
@@ -383,7 +419,7 @@ export const APPROVED_POLICIES = Object.freeze({
         ),
         q(
           'q8',
-          'A friend asks you at dinner about UniVRse’s business plans. What do you do?',
+          'A friend asks you at dinner about the company’s business plans. What do you do?',
           [
             ['a', 'Share general ideas'],
             ['b', 'Keep them confidential: business plans are confidential'],
@@ -406,9 +442,9 @@ export const APPROVED_POLICIES = Object.freeze({
       questions: [
         q(
           'q1',
-          'You want help debugging confidential UniVRse code and a friend suggests a free chatbot. What do you do?',
+          'You want help debugging confidential company code and a friend suggests a free chatbot. What do you do?',
           [
-            ['a', 'Use an AI tool IT has approved, such as Alya or Gemini in your UniVRse account'],
+            ['a', 'Use an AI tool IT has approved, such as Alya or Gemini in your company account'],
             ['b', 'Paste the code into the free chatbot without your name'],
             ['c', 'Put the code on a public page and ask the chatbot to read it'],
           ],
@@ -420,11 +456,11 @@ export const APPROVED_POLICIES = Object.freeze({
           'Which of these are approved AI tools? Select all that apply.',
           [
             ['a', 'Alya'],
-            ['b', 'Gemini in your UniVRse account'],
+            ['b', 'Gemini in your company account'],
             ['c', 'A free chatbot you found online'],
           ],
           ['a', 'b'],
-          'Approved AI tools include Alya and Gemini in your UniVRse account.',
+          'Approved AI tools include Alya and Gemini in your company account.',
         ),
         q(
           'q3',
@@ -475,23 +511,23 @@ export const APPROVED_POLICIES = Object.freeze({
           'q7',
           'You want an AI tool to write a generic meeting agenda with no company data. Which choice is right?',
           [
-            ['a', 'Use an approved tool such as Alya or Gemini in your UniVRse account'],
+            ['a', 'Use an approved tool such as Alya or Gemini in your company account'],
             ['b', 'Any public chatbot is fine if no data is involved'],
             ['c', 'Ask your friend to run it on their account'],
           ],
           'a',
-          'Use only approved AI tools, such as Alya and Gemini in your UniVRse account.',
+          'Use only approved AI tools, such as Alya and Gemini in your company account.',
         ),
         q(
           'q8',
           'Your friend says Gemini is approved, so you may use it with your personal account. What is right?',
           [
             ['a', 'Any Gemini account is approved'],
-            ['b', 'The approved tool is Gemini in your UniVRse account; use that'],
+            ['b', 'The approved tool is Gemini in your company account; use that'],
             ['c', 'Use personal accounts for sensitive work'],
           ],
           'b',
-          'The approved tools are Alya and Gemini in your UniVRse account.',
+          'The approved tools are Alya and Gemini in your company account.',
         ),
       ],
     },
@@ -500,280 +536,372 @@ export const APPROVED_POLICIES = Object.freeze({
 
 // Area 2: Company Purpose & Alignment. Built only from the plan's summaries.
 export const ALIGNMENT_ACTIVITIES = Object.freeze({
+  // From the Company Overview (Drive document 04), section 3: business areas.
   products: {
     title: 'What the company does',
-    instructions:
-      'Show what you know about our products and customers, using your “What the company does” summary.',
-    objectives: ['Know what UniVRse builds, for whom, and how its two products differ.'],
+    instructions: 'Show what you know about our business areas, using the Company Overview.',
+    objectives: ['Know the company’s main business areas.'],
     questions: [
       match(
         'q1',
-        'Match each description to the right item.',
+        'Match each example to the right business area.',
         [
-          ['p1', 'Bookings and scheduling', 'univrse-book'],
-          ['p2', 'Payments', 'univrse-pay'],
-          ['p3', 'Clinics, salons and wellness studios in Malaysia and Singapore', 'customers'],
+          ['p1', 'Web-based systems, business applications and workflow tools', 'systems'],
+          ['p2', 'Virtual reality, augmented reality and 3D interactive environments', 'immersive'],
+          ['p3', 'Game mechanics, rewards and challenges', 'interactive'],
+          ['p4', 'Animation, 3D content and digital storytelling', 'multimedia'],
         ],
         [
-          ['univrse-book', 'UniVRse Book'],
-          ['univrse-pay', 'UniVRse Pay'],
-          ['customers', 'Our customers'],
+          ['systems', 'Digital product & system development'],
+          ['immersive', 'Immersive technology (VR/AR/XR)'],
+          ['interactive', 'Interactive experiences & gamification'],
+          ['multimedia', 'Creative multimedia & digital content'],
         ],
-        'UniVRse Book is for bookings and scheduling, UniVRse Pay is for payments, and our customers are clinics, salons and wellness studios in Malaysia and Singapore.',
+        'These are the company’s business areas, as described in the Company Overview.',
       ),
       q(
         'q2',
-        'What does UniVRse build?',
+        'Which best describes the company?',
         [
-          ['a', 'Booking and scheduling software'],
-          ['b', 'Accounting software for large enterprises'],
-          ['c', 'Hardware for clinics'],
+          ['a', 'A technology and digital-solutions company'],
+          ['b', 'A property developer'],
+          ['c', 'An accounting firm'],
         ],
         'a',
-        'UniVRse builds booking and scheduling software for clinics, salons and wellness studios.',
+        'The company combines technical development with creative thinking to deliver digital products and services.',
       ),
       q(
         'q3',
-        'In which countries are our customers?',
+        'A client needs a solution for a specific business problem. What do we do first?',
         [
-          ['a', 'Malaysia and Singapore'],
-          ['b', 'Malaysia only'],
-          ['c', 'Singapore and Indonesia'],
-        ],
-        'a',
-        'Our customers are in Malaysia and Singapore.',
-      ),
-      q(
-        'q4',
-        'A clinic owner wants patients to book appointments online. Which product fits?',
-        [
-          ['a', 'UniVRse Book'],
-          ['b', 'UniVRse Pay'],
-        ],
-        'a',
-        'UniVRse Book is for bookings and scheduling.',
-      ),
-      q(
-        'q5',
-        'A wellness studio wants to take payments from customers. Which product fits?',
-        [
-          ['a', 'UniVRse Book'],
-          ['b', 'UniVRse Pay'],
+          ['a', 'Start building straight away'],
+          ['b', 'Understand the problem, audience, expected outcome, requirements and constraints'],
+          ['c', 'Wait for the client to decide everything'],
         ],
         'b',
-        'UniVRse Pay is for payments.',
-      ),
-      q(
-        'q6',
-        'About how many businesses use UniVRse today?',
-        [
-          ['a', 'About 240'],
-          ['b', 'About 2,400'],
-          ['c', 'About 24,000'],
-        ],
-        'b',
-        'About 2,400 businesses use UniVRse today.',
-      ),
-      q(
-        'q7',
-        'Which of these are types of UniVRse customers? Select all that apply.',
-        [
-          ['a', 'Clinics'],
-          ['b', 'Salons'],
-          ['c', 'Wellness studios'],
-          ['d', 'Airlines'],
-        ],
-        ['a', 'b', 'c'],
-        'Our customers are clinics, salons and wellness studios.',
+        'We start by understanding the need, and ask questions when the brief is unclear instead of making assumptions.',
       ),
     ],
   },
   values: {
-    title: 'Mission, values and goals',
+    title: 'Vision & Core Values',
     instructions:
-      'Show what you know about the mission and values, using your “Mission, values and goals” summary.',
-    objectives: [
-      'Know the mission and the four values, and where this year’s goals are presented.',
-    ],
+      'Show what you know about the vision, mission and core values, using the Company Overview.',
+    objectives: ['Know the vision, the mission and the seven core values.'],
     questions: [
       q(
         'q1',
-        'What is the company’s mission?',
+        'What is the company’s vision?',
         [
           [
             'a',
-            'To help small service businesses spend less time on admin and more time with their customers',
+            'To positively impact 1 billion people’s lives through technology, creativity and innovation',
           ],
-          ['b', 'To be the largest software company in Southeast Asia'],
-          ['c', 'To replace front-desk staff with software'],
+          ['b', 'To become the largest metaverse platform in Southeast Asia'],
+          ['c', 'To focus only on increasing profit'],
         ],
         'a',
-        'Our mission is to help small service businesses spend less time on admin and more time with their customers.',
+        'The vision is to positively impact 1 billion people’s lives through technology, creativity and innovation.',
       ),
       q(
         'q2',
-        'Which are our four values? Select all four.',
+        'Which statement best describes the company’s mission?',
         [
-          ['a', 'Clear over clever'],
-          ['b', 'Own it'],
-          ['c', 'Help first'],
-          ['d', 'Respect how people work'],
-          ['e', 'Move fast'],
-          ['f', 'Win at all costs'],
-        ],
-        ['a', 'b', 'c', 'd'],
-        'The four values are: clear over clever, own it, help first, and respect how people work.',
-      ),
-      q(
-        'q3',
-        'Which of these is not one of our values?',
-        [
-          ['a', 'Own it'],
-          ['b', 'Help first'],
-          ['c', 'Move fast'],
-          ['d', 'Clear over clever'],
-        ],
-        'c',
-        'The values are clear over clever, own it, help first, and respect how people work.',
-      ),
-      q(
-        'q4',
-        'Where are this year’s company goals presented?',
-        [
-          ['a', 'In the company introduction on your first day'],
-          ['b', 'In an email after six months'],
-          ['c', 'They are kept private'],
-        ],
-        'a',
-        'This year’s company goals are presented in the company introduction on your first day.',
-      ),
-      q(
-        'q5',
-        'Which proposal fits our mission best?',
-        [
-          ['a', 'A change that saves a salon owner time on booking admin'],
-          ['b', 'A change that adds manual steps for customers'],
-          ['c', 'A change that only helps internal reporting'],
-        ],
-        'a',
-        'Our mission is to help small service businesses spend less time on admin.',
-      ),
-    ],
-  },
-  teams: {
-    title: 'How teams fit together',
-    instructions:
-      'Show what you know about the departments, using your “How teams fit together” summary.',
-    objectives: ['Know the six departments and the first-month suggestion for meeting colleagues.'],
-    questions: [
-      q(
-        'q1',
-        'Which are UniVRse’s six departments? Select all six.',
-        [
-          ['a', 'Product and Engineering'],
-          ['b', 'Customer Success'],
-          ['c', 'Sales and Marketing'],
-          ['d', 'Finance'],
-          ['e', 'People and Culture'],
-          ['f', 'Operations and Facilities'],
-          ['g', 'Legal'],
-          ['h', 'Research'],
-        ],
-        ['a', 'b', 'c', 'd', 'e', 'f'],
-        'The six departments are Product and Engineering, Customer Success, Sales and Marketing, Finance, People and Culture, and Operations and Facilities.',
-      ),
-      q(
-        'q2',
-        'How many departments does UniVRse have?',
-        [
-          ['a', 'Four'],
-          ['b', 'Six'],
-          ['c', 'Nine'],
+          ['a', 'Provide social media services only'],
+          [
+            'b',
+            'Enhance people’s lives through Information Technology, build a globally recognised image and brand, and bring together cross-discipline experts and partners',
+          ],
+          ['c', 'Develop technology without considering user needs'],
         ],
         'b',
-        'UniVRse has six departments.',
+        'The mission has three parts: enhance people’s lives through IT, build a globally recognised image and brand, and bring together cross-discipline industry experts and partners.',
       ),
       q(
         'q3',
-        'Which of these is not one of the departments?',
+        'Which are the company’s seven core values? Select all seven.',
         [
-          ['a', 'Finance'],
-          ['b', 'Customer Success'],
-          ['c', 'Legal'],
-          ['d', 'People and Culture'],
+          ['a', 'Value driven'],
+          ['b', 'Be happy'],
+          ['c', 'Be trustworthy'],
+          ['d', 'Elegant solution'],
+          ['e', 'Evolve in learning'],
+          ['f', 'Spread positivity'],
+          ['g', 'Teamwork'],
+          ['h', 'Profit first'],
         ],
-        'c',
-        'The departments are Product and Engineering, Customer Success, Sales and Marketing, Finance, People and Culture, and Operations and Facilities.',
+        ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+        'The seven core values are value driven, be happy, be trustworthy, elegant solution, evolve in learning, spread positivity and teamwork. “Profit first” is not one of them.',
       ),
       q(
         'q4',
-        'What are you encouraged to do in your first month?',
+        'What does “Be trustworthy” mean?',
         [
-          ['a', 'Meet one person from each department'],
-          ['b', 'Wait until your manager arranges meetings'],
-          ['c', 'Only work with your own department'],
+          ['a', 'Always meet deadlines regardless of quality'],
+          ['b', 'Be honest, dependable and careful with company and client information'],
+          ['c', 'Always say yes to every task'],
         ],
-        'a',
-        'In your first month, try to meet one person from each department.',
+        'b',
+        'Be trustworthy: be honest, dependable and careful with company and client information.',
       ),
       q(
         'q5',
-        'How long is enough for each of those meetings?',
+        'What does “Evolve in learning” mean?',
         [
-          ['a', 'Fifteen minutes'],
-          ['b', 'Two hours'],
-          ['c', 'A full day'],
+          ['a', 'Stop learning once you master your job'],
+          ['b', 'Attend training only when told to'],
+          ['c', 'Keep improving your knowledge, skills and professional capability'],
         ],
-        'a',
-        'Fifteen minutes with each of them is enough.',
+        'c',
+        'Evolve in learning: keep developing knowledge, skills and professional capability.',
       ),
     ],
   },
-  roleContribution: {
-    title: 'How your work connects to the company’s purpose',
+  // Onboarding Quiz Part 1 (Drive document 05): company background, vision, key
+  // services and core values. The tagline question is left out: no source document states it.
+  teams: {
+    title: 'Onboarding Quiz Part 1',
     instructions:
-      'Show how your work connects to what the company does, using your “How your role contributes” summary.',
-    objectives: ['Connect your own role to the company’s purpose and know who to ask.'],
+      'Company background, vision, key services and core values. Choose the one best answer for each question.',
+    objectives: ['Know the company background, vision, mission, services and core values.'],
     questions: [
       q(
         'q1',
-        'Which purpose does everything we do support?',
+        'What is the full name of our company?',
         [
-          [
-            'a',
-            'Helping small service businesses spend less time on admin and more time with their customers',
-          ],
-          ['b', 'Maximising the number of meetings each team holds'],
-          ['c', 'Keeping every team separate from the others'],
+          ['a', 'Lumora Digital'],
+          ['b', 'Lumora Digital Solutions Sdn Bhd'],
+          ['c', 'Lumora Technology Group'],
+          ['d', 'Lumora Interactive Malaysia'],
         ],
         'a',
-        'Everything we do helps small service businesses spend less time on admin and more time with their customers.',
+        'The company is Lumora Digital.',
       ),
       q(
         'q2',
-        'Whom should you ask how your work connects to this year’s company goals?',
+        'When was Lumora Digital established?',
         [
-          ['a', 'Your manager'],
-          ['b', 'Nobody; it is not discussed'],
-          ['c', 'A customer'],
+          ['a', '15 August 2020'],
+          ['b', '23 November 2015'],
+          ['c', '1 January 2021'],
+          ['d', '30 June 2018'],
         ],
-        'a',
-        'Ask your manager how your work connects to this year’s company goals.',
+        'b',
+        'Lumora Digital was established on 23 November 2015.',
       ),
       q(
         'q3',
-        'You are planning your first tasks. What should you keep in mind?',
+        'What is Lumora Digital’s business nature?',
         [
-          ['a', 'How each task helps small service businesses spend less time on admin'],
-          ['b', 'Only how quickly you can finish them'],
-          ['c', 'Nothing in particular'],
+          ['a', 'Real estate and property development'],
+          [
+            'b',
+            'Digital solutions, mobile applications, interactive experiences, immersive technology and gamification',
+          ],
+          ['c', 'Accounting and financial services only'],
+          ['d', 'Game publishing and social media marketing only'],
+        ],
+        'b',
+        'The company is a technology and digital-solutions company: digital products and systems, mobile applications, interactive experiences and gamification, and immersive technology.',
+      ),
+      q(
+        'q4',
+        'Which of the following best describes Lumora Digital’s work?',
+        [
+          ['a', 'A 3D gaming app for entertainment only'],
+          [
+            'b',
+            'A technology and digital-solutions company that develops digital products and interactive experiences for business and user needs',
+          ],
+          ['c', 'A cloud storage system only'],
+          ['d', 'A social media app for professionals'],
+        ],
+        'b',
+        'We combine technical development with creative thinking to design and deliver digital products and services.',
+      ),
+      q(
+        'q5',
+        'What is the company’s vision?',
+        [
+          ['a', 'To become the largest metaverse platform in Southeast Asia'],
+          [
+            'b',
+            'To positively impact 1 billion people’s lives through technology, creativity and innovation',
+          ],
+          ['c', 'To create a fun virtual experience for everyone'],
+          ['d', 'To empower students through immersive learning only'],
+        ],
+        'b',
+        'The vision is to positively impact 1 billion people’s lives through technology, creativity and innovation.',
+      ),
+      q(
+        'q6',
+        'Which statement best describes the company’s mission?',
+        [
+          ['a', 'Focus only on increasing profit'],
+          [
+            'b',
+            'Enhance people’s lives through IT, build a recognised brand, and bring together experts and partners',
+          ],
+          ['c', 'Provide social media services only'],
+          ['d', 'Develop technology without considering user needs'],
+        ],
+        'b',
+        'The mission: enhance people’s lives through IT, build a globally recognised image and brand, and bring together cross-discipline industry experts and partners.',
+      ),
+      q(
+        'q8',
+        'Which of the following is NOT one of Lumora Digital’s core values?',
+        [
+          ['a', 'Be happy'],
+          ['b', 'Teamwork'],
+          ['c', 'Profit first'],
+          ['d', 'Be trustworthy'],
+        ],
+        'c',
+        '“Profit first” is not a core value. The seven are value driven, be happy, be trustworthy, elegant solution, evolve in learning, spread positivity and teamwork.',
+      ),
+      q(
+        'q9',
+        'What does “Be trustworthy” mean at Lumora Digital?',
+        [
+          ['a', 'Always meet deadlines regardless of quality'],
+          ['b', 'Be someone the company can trust in both words and actions'],
+          ['c', 'Always say yes to every task'],
+          ['d', 'Be friendly with all team members'],
+        ],
+        'b',
+        'Be honest, dependable and careful with company and client information: someone the company can trust in words and actions.',
+      ),
+      q(
+        'q10',
+        'Which statement best describes “Evolve in learning”?',
+        [
+          ['a', 'Stop learning once you master your job'],
+          ['b', 'Focus only on your department’s skills'],
+          [
+            'c',
+            'Keep learning continuously to improve and stay updated with relevant knowledge and trends',
+          ],
+          ['d', 'Attend training only when told to'],
+        ],
+        'c',
+        'Evolve in learning: keep improving knowledge, skills and professional capability.',
+      ),
+      q(
+        'q11',
+        'Complete the phrase: “If you want to go fast, go alone. If you want to go far, ______.”',
+        [
+          ['a', 'Go together'],
+          ['b', 'Work harder'],
+          ['c', 'Think smarter'],
+          ['d', 'Lead the team'],
         ],
         'a',
-        'Keep the link between your work and the company purpose in mind when you plan your first tasks.',
+        'Teamwork: share information, support colleagues and go together.',
       ),
     ],
-    notesPrompt:
-      'Optional: in your own words, how might your role support this? Bring it to your manager. This note is stored in your own onboarding record and does not affect completion.',
+  },
+  // Onboarding Quiz Part 2 (Drive document 06): company culture, core values, do’s and
+  // don’ts. Its four “in your own words” questions are not here: this quiz only grades
+  // multiple-choice answers.
+  roleContribution: {
+    title: 'Onboarding Quiz Part 2',
+    instructions:
+      'Company culture, core values, do’s and don’ts. Choose the one best answer for each question.',
+    objectives: ['Apply the company’s values to everyday workplace situations.'],
+    questions: [
+      q(
+        'q1',
+        'Which of the following is an appropriate way to raise a work-related issue, complaint or suggestion?',
+        [
+          [
+            'a',
+            'Contact the appropriate manager through an approved work channel or raise the matter in an appropriate internal meeting',
+          ],
+          ['b', 'Share confidential company matters with unrelated people online or offline'],
+          ['c', 'Spread the issue among colleagues without trying to resolve it'],
+          ['d', 'Post the complaint publicly before informing the company'],
+        ],
+        'a',
+        'Raise concerns with the appropriate manager through an approved channel. Do not share confidential matters or post publicly first.',
+      ),
+      q(
+        'q2',
+        'Which statement best reflects the company’s value of Teamwork?',
+        [
+          ['a', 'If you want to go far, walk alone; if you want to go fast, go together'],
+          ['b', 'Avoid discussing concerns so that disagreements never happen'],
+          [
+            'c',
+            'Work collaboratively and recognise that people can achieve more together than alone',
+          ],
+          ['d', 'Discuss every minor matter constantly, even when it does not help the work'],
+        ],
+        'c',
+        'Teamwork: share information, support colleagues and contribute to common goals.',
+      ),
+      q(
+        'q3',
+        'Which behaviour is NOT acceptable in the workplace?',
+        [
+          ['a', 'Taking approved leave for a personal matter'],
+          [
+            'b',
+            'Deliberately excluding or isolating a colleague, gossiping or spreading harmful negativity',
+          ],
+          ['c', 'Raising a concern respectfully with the appropriate person'],
+          ['d', 'Asking for help when a task is unclear'],
+        ],
+        'b',
+        'Bullying, harassment and deliberately undermining another person are not acceptable. Spread positivity instead.',
+      ),
+      q(
+        'q6',
+        'Which statement best reflects the company’s value of Professionalism?',
+        [
+          ['a', 'Professionalism is not important for a digital-solutions company'],
+          [
+            'b',
+            'We should respect the trust clients place in us and act, communicate and present ourselves professionally',
+          ],
+          ['c', 'Comfort is the only consideration when meeting a client'],
+          [
+            'd',
+            'Clear communication and preparation are unnecessary if the audience understands the general idea',
+          ],
+        ],
+        'b',
+        'Respect the trust clients place in us: act, communicate and present yourself professionally.',
+      ),
+      q(
+        'q8',
+        'All the statements below reflect positive workplace values, EXCEPT:',
+        [
+          ['a', 'Create a positive and reliable experience for customers'],
+          [
+            'b',
+            'Recognise that clients expect professionalism when they entrust us with their investment',
+          ],
+          ['c', 'Look for win-win outcomes when working with others'],
+          ['d', 'Always put yourself first and refuse to help others'],
+        ],
+        'd',
+        'Putting yourself first and refusing to help others goes against teamwork and spreading positivity.',
+      ),
+      q(
+        'q9',
+        'Which statement is FALSE about being value driven?',
+        [
+          ['a', 'Try to deliver value from the first interaction with a client'],
+          ['b', 'Use knowledge, communication and experience to be helpful and resourceful'],
+          ['c', 'Agree to every client request, even if it is outside scope or not authorised'],
+          ['d', 'Look for ways to make a positive contribution, even through small daily actions'],
+        ],
+        'c',
+        'Do not promise anything you are not authorised to promise. Value driven means positive impact that supports company goals.',
+      ),
+    ],
   },
 });
 
@@ -791,13 +919,13 @@ export const SUPPORT_ROUTING_SCENARIOS = Object.freeze([
     id: 'sit-1',
     situation: 'You receive an email asking you for your password.',
     options: [
-      { id: 'it', label: 'IT: forward it to it-help@univrse.example without clicking links' },
+      { id: 'it', label: 'IT: forward it to it-help@company.example without clicking links' },
       { id: 'reply', label: 'Reply to the sender' },
       { id: 'click', label: 'Click the link to check it' },
     ],
     correctId: 'it',
     explanation:
-      'Forward suspicious emails to IT at it-help@univrse.example without clicking links.',
+      'Forward suspicious emails to IT at it-help@company.example without clicking links.',
   },
   {
     id: 'sit-2',
@@ -826,7 +954,7 @@ export const SUPPORT_ROUTING_SCENARIOS = Object.freeze([
     situation: 'You have not received the invite link to your department’s chat group.',
     options: [
       { id: 'coordinator', label: 'Your onboarding coordinator' },
-      { id: 'it', label: 'it-help@univrse.example' },
+      { id: 'it', label: 'it-help@company.example' },
       { id: 'wait', label: 'Nobody; groups cannot be joined later' },
     ],
     correctId: 'coordinator',
@@ -870,7 +998,7 @@ export const SUPPORT_ROUTING_SCENARIOS = Object.freeze([
     situation: 'You have not been added to the company-wide chat groups.',
     options: [
       { id: 'coordinator', label: 'Your onboarding coordinator, who shares those groups' },
-      { id: 'it', label: 'it-help@univrse.example' },
+      { id: 'it', label: 'it-help@company.example' },
       { id: 'wait', label: 'Nobody; groups are optional and cannot be joined later' },
     ],
     correctId: 'coordinator',
@@ -884,7 +1012,7 @@ export const VERIFIED_SUPPORT_DIRECTORY = Object.freeze({
   contacts: [
     {
       name: 'IT',
-      email: 'it-help@univrse.example',
+      email: 'it-help@company.example',
       purpose: 'Suspicious emails, lost or stolen devices, and asking before using a new AI tool',
     },
     {
@@ -912,23 +1040,63 @@ export const routingQuestions = (scenarios) =>
     explanation: s.explanation,
   }));
 
-// Grades answers. single/multi: the selected options must equal the answer key.
-// match: every pair must carry its key. Anything unanswered is wrong.
+// Whether one question is answered correctly: single/multi need the selected
+// options to equal the answer key; match needs every pair to carry its key.
+export function isCorrectAnswer(question, value) {
+  if (question.type === 'match') {
+    const given = value && typeof value === 'object' ? value : {};
+    return question.pairs.every((pair) => given[pair.id] === pair.correct);
+  }
+  const given = [].concat(value ?? []).map(String);
+  return (
+    given.length === question.correct.length && question.correct.every((id) => given.includes(id))
+  );
+}
+
+// Whether a submitted answer has the right shape for its question: known option
+// ids only, exactly one for a single-choice question, a choice for every pair of
+// a match question. Throws nothing; the caller answers 400.
+export function validAnswer(question, value) {
+  if (question.type === 'match') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const choices = question.choices.map((choice) => choice.id);
+    return question.pairs.every((pair) => choices.includes(value[pair.id]));
+  }
+  const given = [].concat(value ?? []);
+  const ids = question.options.map((option) => option.id);
+  if (!given.length || !given.every((id) => typeof id === 'string' && ids.includes(id)))
+    return false;
+  if (new Set(given).size !== given.length) return false;
+  return question.multiple ? true : given.length === 1;
+}
+
+// The feedback shown right after an answer is locked, from the server's own key.
+// Only called for an answer already recorded, so showing the key leaks nothing.
+export function answerFeedback(question, value) {
+  const correct = isCorrectAnswer(question, value);
+  const base = { questionId: question.id, correct, explanation: question.explanation };
+  if (question.type === 'match') {
+    const given = value && typeof value === 'object' ? value : {};
+    return {
+      ...base,
+      correctPairs: Object.fromEntries(question.pairs.map((pair) => [pair.id, pair.correct])),
+      wrongPairs: question.pairs.filter((pair) => given[pair.id] !== pair.correct).map((p) => p.id),
+    };
+  }
+  const given = [].concat(value ?? []).map(String);
+  return {
+    ...base,
+    correctAnswer: question.correct,
+    // For a multiple-choice question: what was left out and what should not have been picked.
+    missed: question.correct.filter((id) => !given.includes(id)),
+    extra: given.filter((id) => !question.correct.includes(id)),
+  };
+}
+
+// Grades answers. Anything unanswered is wrong.
 export function gradeQuestions(questions, answers = {}) {
   const results = questions.map((question) => {
-    let correct;
-    if (question.type === 'match') {
-      const given =
-        answers[question.id] && typeof answers[question.id] === 'object'
-          ? answers[question.id]
-          : {};
-      correct = question.pairs.every((pair) => given[pair.id] === pair.correct);
-    } else {
-      const given = [].concat(answers[question.id] ?? []).map(String);
-      correct =
-        given.length === question.correct.length &&
-        question.correct.every((id) => given.includes(id));
-    }
+    const correct = isCorrectAnswer(question, answers[question.id]);
     return { id: question.id, correct, ...(correct ? {} : { explanation: question.explanation }) };
   });
   const right = results.filter((result) => result.correct).length;

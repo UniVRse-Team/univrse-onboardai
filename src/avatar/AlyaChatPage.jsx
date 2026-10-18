@@ -40,6 +40,7 @@ import {
   reexplainForward,
   requestStatusWord,
   takeHandoff,
+  peekHandoffStepId,
   visibleChips,
 } from '../access/support-flow.mjs';
 import './employee-support.css';
@@ -49,6 +50,7 @@ import './alya-workspace.css';
 import './alya-presentation.css';
 import './clothing-presentation.css';
 import './automatic-presentation.css';
+import './alya-mobile.css';
 
 export { presentAnswer } from './chat-answer-presentation.mjs';
 
@@ -338,6 +340,16 @@ export default function AlyaChatPage({ navigate }) {
     [actionBusy, setActionBusy] = useState(''),
     [actionErrors, setActionErrors] = useState({});
   const handoffTaken = useRef(false);
+  // The task Alya was opened from: her suggested questions follow it.
+  const contextStepId = useRef(null);
+  if (contextStepId.current === null)
+    contextStepId.current = (() => {
+      try {
+        return peekHandoffStepId(window.sessionStorage) || '';
+      } catch {
+        return '';
+      }
+    })();
   // The voice settings popover closes on Escape (focus back to its toggle) and
   // on a click outside it, so it never blocks the question box (QA E-1).
   const settingsButton = useRef(null),
@@ -459,7 +471,13 @@ export default function AlyaChatPage({ navigate }) {
   }
   async function loadChips() {
     try {
-      setChips(visibleChips(await journeyApi.quickQuestions()));
+      setChips(
+        visibleChips(
+          await journeyApi.quickQuestions(
+            contextStepId.current ? { stepId: contextStepId.current } : {},
+          ),
+        ),
+      );
     } catch {
       setChips([]);
     }
@@ -1025,7 +1043,7 @@ export default function AlyaChatPage({ navigate }) {
               : null
           }
         />
-        <OnboardingChecklist checklist={checklist} navigate={navigate} collapsible />
+        <OnboardingChecklist checklist={checklist} navigate={navigate} variant="collapsible" />
         <div className="alya-answer-space">
           <div className="alya-view-panels">
             <section className="alya-chat-panel" id="alya-chat-view" aria-label="Chat with Alya">
@@ -1164,7 +1182,7 @@ export default function AlyaChatPage({ navigate }) {
                       voiceAvailable={voiceAvailable}
                       onAction={actOnBriefing}
                       onCheckPassed={briefingCheckPassed}
-                      onDashboard={() => navigate('/dashboard')}
+                      onDashboard={() => navigate('/onboarding')}
                       onHelpful={() => {
                         stopVoice();
                         recordBriefing('helpful');

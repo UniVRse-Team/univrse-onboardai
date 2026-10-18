@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import { startAccountsApp } from './account-harness.mjs';
 import {
   ALIGNMENT_ACTIVITIES,
+  ALIGNMENT_ACTIVITY_STEP_IDS,
   APPROVED_POLICIES,
   DEFAULT_POLICY_PASSING_SCORE,
   SUPPORT_ROUTING_SCENARIOS,
   routingQuestions,
 } from '../../server/task-verification.mjs';
+import { templateWithAdditionalPolicies } from './template-fixtures.mjs';
 
 async function withApp(check) {
   const app = await startAccountsApp();
@@ -73,11 +75,8 @@ test('Area 1: acknowledgement first; wrong answers retry with feedback; a pass c
     const id = 'policies.employee-handbook';
     const questions = APPROVED_POLICIES[id].quiz.questions;
 
-    const early = await post(browser, 'policies', id, { action: 'quiz', answers: {} });
-    assert.equal(early.status, 409);
-
-    await post(browser, 'policies', id, { action: 'acknowledge' });
-    assert.equal((await stepOf(browser, 'policies', id)).status, 'todo'); // acknowledged only
+    // The quiz tests the policy; no acknowledgement is needed first.
+    assert.equal((await stepOf(browser, 'policies', id)).status, 'todo');
 
     const fail = await post(browser, 'policies', id, {
       action: 'quiz',
@@ -91,10 +90,15 @@ test('Area 1: acknowledgement first; wrong answers retry with feedback; a pass c
     assert.ok(fail.body.questionResults.every((r) => !r.correct && r.explanation));
     assert.equal((await stepOf(browser, 'policies', id)).status, 'todo');
 
-    const almost = { ...correctAnswers(questions), q1: wrongAnswers(questions).q1 };
+    const almost = {
+      ...correctAnswers(questions),
+      q1: wrongAnswers(questions).q1,
+      q2: wrongAnswers(questions).q2,
+      q3: wrongAnswers(questions).q3,
+    };
     const near = await post(browser, 'policies', id, { action: 'quiz', answers: almost });
-    assert.equal(near.body.passed, false); // 100% is required by default
-    assert.equal(near.body.score, 88);
+    assert.equal(near.body.passed, false); // 80% is required by default
+    assert.equal(near.body.score, 70);
 
     const pass = await post(browser, 'policies', id, {
       action: 'quiz',
@@ -105,18 +109,20 @@ test('Area 1: acknowledgement first; wrong answers retry with feedback; a pass c
     assert.equal((await stepOf(browser, 'policies', id)).status, 'done');
 
     const saved = (await browser.get('/api/me/task-verifications')).body.verifications.policies[id];
-    assert.ok(saved.acknowledgedAt);
     assert.equal(saved.quiz.attempts, 3);
     assert.equal(saved.quiz.passed, true);
     assert.deepEqual(
       saved.quiz.history.map((h) => h.score),
-      [0, 88, 100],
+      [0, 70, 100],
     );
   });
 });
 
 test('Area 1: the pass mark is server configuration', async () => {
   await withApp(async (app) => {
+    // The data protection quiz is an approved policy activity that is not in the
+    // current checklist, so the step is added through a stored template.
+    app.firestore.write('onboardingTemplates/employee', templateWithAdditionalPolicies());
     const { browser } = await app.readyEmployee(await app.hrBrowser());
     const id = 'policies.data-protection';
     const questions = APPROVED_POLICIES[id].quiz.questions;
@@ -176,6 +182,7 @@ test('Drafts: answers in progress are saved, restored and cleared by a submissio
 
 test('Area 2: every activity (matching and questions) records attempts and completes its step on a pass', async () => {
   await withApp(async (app) => {
+    app.firestore.write('onboardingTemplates/employee', templateWithAdditionalPolicies());
     const { browser } = await app.readyEmployee(await app.hrBrowser());
     const slugs = {
       'products-customers': ALIGNMENT_ACTIVITIES.products,
@@ -199,7 +206,11 @@ test('Area 2: every activity (matching and questions) records attempts and compl
     const area = (await browser.get('/api/me/onboarding')).body.areas.find(
       (a) => a.id === 'alignment',
     );
-    assert.ok(area.steps.filter((s) => s.required !== false).every((s) => s.status === 'done'));
+    assert.ok(
+      area.steps
+        .filter((s) => ALIGNMENT_ACTIVITY_STEP_IDS.includes(s.id))
+        .every((s) => s.status === 'done'),
+    );
     // the matching question needs every pair right
     const products = ALIGNMENT_ACTIVITIES.products.questions;
     const partial = correctAnswers(products);

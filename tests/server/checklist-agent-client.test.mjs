@@ -120,7 +120,7 @@ test('events: the confirmation request and the last model text, camelCase and sn
                 originalFunctionCall: {
                   id: 'x',
                   name: 'mark_step',
-                  args: { step_id: 'documentation.contract' },
+                  args: { step_id: 'documentation.tax-id-documents' },
                 },
               },
             },
@@ -131,7 +131,7 @@ test('events: the confirmation request and the last model text, camelCase and sn
   ];
   assert.deepEqual(outcomeOf(snake).confirmation, {
     callId: 'adk-2',
-    stepId: 'documentation.contract',
+    stepId: 'documentation.tax-id-documents',
   });
   // Another tool's confirmation, thoughts and partial chunks are ignored.
   const other = [

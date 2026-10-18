@@ -71,23 +71,23 @@ step). This page describes how the server implements it.
 
 ## The footprint
 
-Five areas, in this order. Since template version 3 (Firestore migration
-`005_onboarding_templates_v3`), Role, Tools & AI Readiness has eleven **required** steps and every
-other area exactly four, on every track. Interns and contractors substitute steps rather than
-dropping them, so the rule below means 3 of 4 in four areas and 8 of 11 in `role-tools`.
+Five areas, in this order. Since template version 4 (Firestore migration
+`006_onboarding_templates_v4`), every track has the same checklist: Documentation 3, Policies 3,
+Alignment 4, Role, Tools & AI Readiness 10 and People & Workplace Support 4 **required** steps,
+plus two optional ones that never count. The 70% rule means every step in the three-step areas,
+3 of 4 in alignment and team support and 7 of 10 in `role-tools`.
 
-| Area            | Icon, title                    | Steps (completion)                                                                                                                                                                                                                                                                                                                                |
-| --------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `documentation` | 📄 Documentation               | contract, personal & bank details, tax/ID documents, emergency contact (all `hr_verify`)                                                                                                                                                                                                                                                          |
-| `policies`      | 🛡️ Policies & Safe Practices   | company rules (Employee Handbook), workplace conduct & safe practices, privacy & data handling (PDPA), responsible AI use (all `check`)                                                                                                                                                                                                           |
-| `alignment`     | 🎯 Company Purpose & Alignment | what the company does, mission/values/goals, how teams fit together, how your role contributes (all `self`)                                                                                                                                                                                                                                       |
-| `role-tools`    | 🛠️ Role, Tools & AI Readiness  | GSheet account, Individual GSheet, GSheet training & SOP (`check`), shared Drive folders, Gmail & Google Chat, Gmail profile picture, professional email, official email linked to Gmail, email signature, daily GSheet updates (`check`), AI Readiness training ([AI proficiency](#ai-proficiency-self-assessment-template-v3)); the rest `self` |
-| `team-support`  | 🤝 People & Workplace Support  | company chat groups, department chat group, Talent Personality Test, MBTI Personality Test (all `self`); plus the optional "Share your working preferences or support needs (optional)"                                                                                                                                                           |
+| Area            | Icon, title                    | Steps (completion)                                                                                                                                                                                                                                                                                                                                        |
+| --------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `documentation` | 📄 Documentation               | copy of your IC (front and back), details for the Employees/Interns Record, Employee Information Form (all `hr_verify`: finished by saving the document; HR review is separate)                                                                                                                                                                           |
+| `policies`      | 🛡️ Policies & Safe Practices   | Employee Handbook (`check`), company SOPs & policies (`self`), SOP for internal meetings (`self`)                                                                                                                                                                                                                                                         |
+| `alignment`     | 🎯 Company Purpose & Alignment | Vision & Core Values, company social media accounts (`self`), Onboarding Quiz Part 1 and Part 2 (quizzes: team structure and role contribution; finished through their activity)                                                                                                                                                                          |
+| `role-tools`    | 🛠️ Role, Tools & AI Readiness  | GSheet account, Individual GSheet, GSheet training & SOP (`check`), shared Drive folders, Gmail & Google Chat, Gmail profile picture, professional email, official email linked to Gmail, email signature, daily GSheet updates (`check`); plus the optional AI Readiness self-assessment ([AI proficiency](#ai-proficiency-self-assessment-template-v3)) |
+| `team-support`  | 🤝 People & Workplace Support  | company chat groups, department chat group, Talent Personality Test, MBTI Personality Test (all `self`); plus the optional "Share your working preferences or support needs (optional)"                                                                                                                                                                   |
 
-Track differences: interns sign an internship agreement and show ID and placement documents;
-contractors sign a service agreement, give billing details, show an ID document and sign a
-confidentiality agreement (NDA, instead of the emergency contact form). Since version 3, Role,
-Tools & AI Readiness and People & Workplace Support are the same on every track.
+Steps no longer in the checklist (employment contract, emergency contact, the NDA, workplace
+conduct, PDPA, responsible AI, "what the company does") keep their approved content in the code
+(`additionalPolicySteps`, `additionalAlignmentSteps`) so HR can add them to a stored template.
 Step ids (`<areaId>.<slug>`) are shared across tracks for the same structural step, so changing
 an employee's track keeps the progress that still applies.
 

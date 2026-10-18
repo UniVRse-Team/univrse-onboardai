@@ -1,11 +1,13 @@
 import { randomInt } from 'node:crypto';
 import { journeyErrors } from './account-errors.mjs';
+import { ChatError } from './chat-errors.mjs';
 import { createStorageCall } from './firestore-client.mjs';
 import { asProfileStorageError } from './employee-profiles.mjs';
 import { journeyCollections, quickQuestionsDoc } from './onboarding-collections.mjs';
 import {
   builtInQuickQuestions,
   builtInTemplate,
+  stepQuestions,
   templateVersion,
   trackOf,
 } from './onboarding-content.mjs';
@@ -32,10 +34,12 @@ import {
   findStep,
   hrSetStatus,
   needsBriefing,
+  needsDocument,
   progressEntry,
   selectChips,
   stepForHelpfulMessage,
   stepRecord,
+  taskChips,
   validChips,
   validTemplate,
 } from './onboarding-progress.mjs';
@@ -259,6 +263,53 @@ export function createOnboardingJourney({
     return { template: chosen, progress, onboarding: buildOnboarding(chosen, progress) };
   }
 
+  // Documentation steps are finished by saving the required document, not by a click. The
+  // submissions service binds `documentStatuses(accountId)` -> { [stepId]: status of
+  // the step's latest submission } ('Pending Review' | 'Under Review' | 'Approved' |
+  // 'Rejected'). Until it is bound (no document storage) nothing is derived.
+  let documentStatuses = null;
+  const documentStepIds = (chosen) =>
+    chosen.areas
+      .flatMap((area) => area.steps.map((step) => [area.id, step]))
+      .filter(([areaId, step]) => needsDocument(areaId, step))
+      .map(([, step]) => step.id);
+  // For the employee a Documentation task is complete once its document has been
+  // saved. HR reviews it separately; the review never changes the employee's progress.
+  // A saved document completes its task. Without one nothing is changed, so an
+  // employee's earlier saved progress is never reset by a read.
+  const documentWanted = (latest, entry) => (latest ? 'done' : (entry?.status ?? null));
+  // Brings the saved step statuses in line with the saved submissions. Idempotent;
+  // run on every read and after every submission or review, so a failed earlier
+  // write heals itself. A read failure never blocks the dashboard.
+  async function reconcileDocuments(accountId, track) {
+    if (!documentStatuses) return;
+    let latest;
+    try {
+      latest = await documentStatuses(accountId);
+    } catch (error) {
+      log?.('Document statuses could not be read: ' + (error?.message || error));
+      return;
+    }
+    const { template: chosen, progress } = await onboardingOf(accountId, track);
+    for (const stepId of documentStepIds(chosen)) {
+      const entry = progressEntry(progress, stepId);
+      const want = documentWanted(latest[stepId], entry);
+      if ((entry?.status || null) === want) continue;
+      await changeStep(accountId, track, stepId, () => (want ? { status: want } : null), {
+        source: 'employee',
+        actorId: accountId,
+      });
+    }
+  }
+  async function syncDocuments(accountId) {
+    const { track } = await employeeTrack(accountId);
+    await reconcileDocuments(accountId, track);
+  }
+  const documentStepGuard = async (track, stepId) => {
+    const found = findStep(await template(track), stepId);
+    return found && needsDocument(found.area.id, found.step);
+  };
+
   // Changes one step in a transaction. change(step, entry, record) returns the
   // new entry (null = todo) or throws a StepRuleError; `record` is the step's
   // whole stored record. Unchanged steps are not written. The briefing fields
@@ -317,10 +368,18 @@ export function createOnboardingJourney({
   // --- Employee ---------------------------------------------------------------
   async function myOnboarding(account) {
     const { track } = await employeeFacts(account);
+    await reconcileDocuments(account.id, track);
     return (await onboardingOf(account.id, track)).onboarding;
   }
+  const documentRequired = () =>
+    new ChatError(
+      409,
+      'DOCUMENT_REQUIRED',
+      'Upload your document to complete this task. It cannot be marked complete without saving it.',
+    );
   async function completeStep(account, stepId) {
     const { track } = await employeeFacts(account);
+    if (await documentStepGuard(track, stepId)) throw documentRequired();
     return changeStep(account.id, track, stepId, employeeComplete, {
       source: 'employee',
       actorId: account.id,
@@ -328,6 +387,7 @@ export function createOnboardingJourney({
   }
   async function reopenStep(account, stepId) {
     const { track } = await employeeFacts(account);
+    if (await documentStepGuard(track, stepId)) throw documentRequired();
     return changeStep(account.id, track, stepId, employeeReopen, {
       source: 'employee',
       actorId: account.id,
@@ -605,8 +665,17 @@ export function createOnboardingJourney({
   async function requireBriefed(account, stepId) {
     if (await briefingNeeded(account, stepId)) throw journeyErrors.briefingRequired();
   }
-  async function quickQuestions(account) {
+  async function quickQuestions(account, { stepId = null } = {}) {
     const { track, startDate } = await employeeFacts(account);
+    // Asked from a task: that task's questions, not the overall next step's.
+    if (typeof stepId === 'string' && stepId && stepId.length <= 120) {
+      const forTask = taskChips({
+        template: await template(track),
+        stepId,
+        questions: stepQuestions[stepId] || [],
+      });
+      if (forTask) return { chips: forTask };
+    }
     const [{ onboarding }, chips] = await Promise.all([
       onboardingOf(account.id, track),
       chipConfig(track),
@@ -619,7 +688,8 @@ export function createOnboardingJourney({
     if (typeof chipId !== 'string' || !chipId || chipId.length > 120) return null;
     const { track } = await employeeFacts(account);
     if (chipId.startsWith('step:')) {
-      const found = findStep(await template(track), chipId.slice(5));
+      // "step:<id>" is the task's own question, "step:<id>#2" a related one.
+      const found = findStep(await template(track), chipId.slice(5).split('#')[0]);
       return found ? { id: chipId, kind: 'knowledge', stepId: found.step.id } : null;
     }
     const chip = (await chipConfig(track)).find((c) => c.id === chipId);
@@ -650,6 +720,7 @@ export function createOnboardingJourney({
   }
   async function employeeOnboarding(id) {
     const { track } = await employeeTrack(id);
+    await reconcileDocuments(id, track);
     return (await onboardingOf(id, track)).onboarding;
   }
   async function employeeAiProficiency(id, actor = null, query = {}) {
@@ -681,6 +752,15 @@ export function createOnboardingJourney({
     const found = findStep(await template(track), stepId);
     if (!found) throw journeyErrors.stepNotFound();
     if (found.step.completion !== 'hr_verify') throw journeyErrors.stepNotHrVerified();
+    // A document step follows the employee's saved submission; HR cannot un-submit it.
+    if (needsDocument(found.area.id, found.step) && status === 'todo' && documentStatuses) {
+      if ((await documentStatuses(id))[stepId])
+        throw new ChatError(
+          409,
+          'DOCUMENT_SUBMITTED',
+          'The employee has submitted this document, so the step stays complete. Review the document in Submissions.',
+        );
+    }
     return accounts.recordEmployeeChange(
       actor,
       id,
@@ -762,6 +842,10 @@ export function createOnboardingJourney({
     employeeFirstDay,
     putEmployeeFirstDay,
     withOnboarding,
+    bindDocumentStatuses: (fn) => {
+      documentStatuses = fn;
+    },
+    syncDocuments,
     // The shared Firestore handle (also used by the task-verification store).
     firestore: database,
     // A passed verification (quiz, matching) marks the step done for the employee.

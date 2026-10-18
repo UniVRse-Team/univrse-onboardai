@@ -5,11 +5,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { startAccountsApp } from './account-harness.mjs';
-import { builtInTemplate } from '../../server/onboarding-content.mjs';
+import { templateWithAdditionalPolicies } from './template-fixtures.mjs';
 import { findStep } from '../../server/onboarding-progress.mjs';
 import { createCheckGrader, feedbackText } from '../../server/check-grader.mjs';
 
-const template = builtInTemplate('employee');
+const template = templateWithAdditionalPolicies('employee');
 const checkOf = (id) => findStep(template, id).step.check;
 const stepOf = (onboarding, id) =>
   onboarding.areas.flatMap((area) => area.steps).find((s) => s.id === id);
@@ -34,6 +34,8 @@ function fakeModel(script) {
 async function withEmployee(options, check) {
   const app = await startAccountsApp(options);
   try {
+    // The written checks live in steps the current checklist does not list.
+    app.firestore.write('onboardingTemplates/employee', template);
     const hr = await app.hrBrowser();
     const { employee, browser } = await app.readyEmployee(hr);
     app.briefAll(employee.account.id);
@@ -97,7 +99,7 @@ test('written checks: the scenario and limit only; a passing answer completes th
       stepId: 'policies.data-protection',
       type: 'written',
       scenario: check.scenario,
-      sourceTitle: 'UniVRse - Employee Handbook',
+      sourceTitle: 'Employee Handbook',
       maxLength: 600,
     });
     for (const secret of secrets) assert.ok(!question.text.includes(secret), secret);
@@ -118,7 +120,11 @@ test('written checks: the scenario and limit only; a passing answer completes th
     assert.equal(stepOf(passed.body.onboarding, 'policies.data-protection').status, 'done');
     assert.deepEqual(calls, [answer]); // trimmed, graded once
     // The answer is nowhere: not in Firestore, not in the logs.
-    const everything = JSON.stringify([...app.firestore.store.documents.values()]);
+    const everything = JSON.stringify(
+      [...app.firestore.store.documents.entries()]
+        .filter(([path]) => !path.startsWith('onboardingTemplates/'))
+        .map(([, doc]) => doc),
+    );
     assert.ok(!everything.includes('company systems'));
     assert.ok([...app.logs, ...logs].every((line) => !line.includes('company systems')));
     const entry = app.firestore.read(`onboardingProgress/${id}`).steps['policies.data-protection'];
@@ -189,7 +195,11 @@ test('written checks: a missing key point, a violation or fabricated evidence fa
       );
       // Nothing changed or was stored.
       assert.deepEqual(app.firestore.read(`onboardingProgress/${id}`), before);
-      const everything = JSON.stringify([...app.firestore.store.documents.values()]);
+      const everything = JSON.stringify(
+        [...app.firestore.store.documents.entries()]
+          .filter(([path]) => !path.startsWith('onboardingTemplates/'))
+          .map(([, doc]) => doc),
+      );
       assert.ok(!everything.includes('weekend') && !everything.includes('maybe ask'));
     },
   );
@@ -217,7 +227,7 @@ test('written checks: a prompt-injection answer fails without reaching the model
       assert.equal(stepOf(injected.body.onboarding, 'policies.responsible-ai').status, 'todo');
       // A real answer whose feedback quotes the model answer: the feedback is replaced.
       const answer =
-        'I would not paste the code into the free chatbot and would use Gemini in my UniVRse account.';
+        'I would not paste the code into the free chatbot and would use Gemini in my company account.';
       const passed = await browser.post(path, { answer });
       assert.equal(passed.body.correct, true);
       assert.equal(passed.body.feedback, feedbackText.correct);

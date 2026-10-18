@@ -1,34 +1,52 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { isAnswered, unansweredIds } from './activity-model.mjs';
+import React, { useEffect, useReducer, useRef, useState } from 'react';
+import { isAnswered } from './activity-model.mjs';
+import { answeredCount, feedbackDelayMs, quizReducer, startQuiz } from './quiz-flow.mjs';
 
-// One question at a time, then a review of unanswered questions, a final
-// confirmation and a results page with feedback and retry. Answers in progress
-// are saved as a draft (onDraft) shortly after each change, so leaving the page
-// does not lose them. The score is only ever shown from the server's result.
-function Question({ question, value, onChange, disabled }) {
-  const picked = [].concat(value ?? []);
-  if (question.type === 'match')
+// One question at a time with the answer checked at once. The server holds the
+// answer key: each answer is sent, checked, locked and saved before its feedback
+// shows, then the quiz moves on by itself. The score and the pass are only ever
+// the server's result (finish), never computed here.
+const labelOf = (question, id) => question.options?.find((option) => option.id === id)?.text || id;
+
+function Question({ question, value, onChange, disabled, feedback }) {
+  const picked = [].concat(feedback ? feedback.selected : (value ?? [])).filter(Boolean);
+  if (question.type === 'match') {
+    const given = feedback ? feedback.selected || {} : value || {};
     return (
       <div className="qr-match">
-        {question.pairs.map((pair) => (
-          <label key={pair.id} className="qr-match-row">
-            <span>{pair.text}</span>
-            <select
-              disabled={disabled}
-              value={value?.[pair.id] || ''}
-              onChange={(e) => onChange({ ...(value || {}), [pair.id]: e.target.value })}
+        {question.pairs.map((pair) => {
+          const wrong = feedback?.wrongPairs?.includes(pair.id);
+          return (
+            <label
+              key={pair.id}
+              className={'qr-match-row' + (feedback ? (wrong ? ' wrong' : ' right') : '')}
             >
-              <option value="">Choose…</option>
-              {question.choices.map((choice) => (
-                <option key={choice.id} value={choice.id}>
-                  {choice.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        ))}
+              <span>{pair.text}</span>
+              <select
+                disabled={disabled}
+                value={given[pair.id] || ''}
+                onChange={(e) => onChange({ ...(value || {}), [pair.id]: e.target.value })}
+              >
+                <option value="">Choose…</option>
+                {question.choices.map((choice) => (
+                  <option key={choice.id} value={choice.id}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
+              {feedback && wrong && (
+                <small className="qr-mark">
+                  Correct match:{' '}
+                  {question.choices.find((c) => c.id === feedback.correctPairs?.[pair.id])?.label}
+                </small>
+              )}
+              {feedback && !wrong && <small className="qr-mark">✓ Correct</small>}
+            </label>
+          );
+        })}
       </div>
     );
+  }
   const toggle = (id) =>
     onChange(
       question.multiple
@@ -39,21 +57,61 @@ function Question({ question, value, onChange, disabled }) {
     );
   return (
     <div className="qr-options" role={question.multiple ? 'group' : 'radiogroup'}>
-      {question.options.map((option) => (
-        <label
-          key={option.id}
-          className={'qr-option' + (picked.includes(option.id) ? ' picked' : '')}
-        >
-          <input
-            type={question.multiple ? 'checkbox' : 'radio'}
-            name={'q-' + question.id}
-            disabled={disabled}
-            checked={picked.includes(option.id)}
-            onChange={() => toggle(option.id)}
-          />
-          <span>{option.text}</span>
-        </label>
-      ))}
+      {question.options.map((option) => {
+        const chosen = picked.includes(option.id);
+        const isKey = feedback?.correctAnswer?.includes(option.id);
+        const state = !feedback
+          ? chosen
+            ? ' picked'
+            : ''
+          : isKey
+            ? ' right'
+            : chosen
+              ? ' wrong'
+              : '';
+        return (
+          <label key={option.id} className={'qr-option' + state}>
+            <input
+              type={question.multiple ? 'checkbox' : 'radio'}
+              name={'q-' + question.id}
+              disabled={disabled}
+              checked={chosen}
+              onChange={() => toggle(option.id)}
+            />
+            <span>{option.text}</span>
+            {feedback && isKey && chosen && (
+              <small className="qr-mark">✓ Correct answer · your choice</small>
+            )}
+            {feedback && isKey && !chosen && <small className="qr-mark">✓ Correct answer</small>}
+            {feedback && !isKey && chosen && <small className="qr-mark">✗ Your choice</small>}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+function Feedback({ question, feedback, onContinue }) {
+  const names = (ids) => ids.map((id) => labelOf(question, id)).join('; ');
+  return (
+    <div
+      className={'qr-feedback ' + (feedback.correct ? 'right' : 'wrong')}
+      role="status"
+      aria-live="polite"
+    >
+      <strong>{feedback.correct ? '✓ Correct' : '✗ Not quite'}</strong>
+      {feedback.explanation && <p>{feedback.explanation}</p>}
+      {!feedback.correct && question.multiple && feedback.missed?.length > 0 && (
+        <p>You left out: {names(feedback.missed)}.</p>
+      )}
+      {!feedback.correct && question.multiple && feedback.extra?.length > 0 && (
+        <p>You should not have selected: {names(feedback.extra)}.</p>
+      )}
+      <div className="qr-actions">
+        <button type="button" className="fp-action main" onClick={onContinue}>
+          Continue
+        </button>
+      </div>
     </div>
   );
 }
@@ -61,104 +119,85 @@ function Question({ question, value, onChange, disabled }) {
 export default function QuizRunner({
   questions,
   passingScore,
-  initialAnswers = {},
+  session = null,
   alreadyPassed = false,
   summary = null,
-  onDraft,
-  onSubmit,
+  onAnswer,
+  onFinish,
   onExit,
   registerGuard,
   children,
 }) {
-  const [answers, setAnswers] = useState(initialAnswers);
-  const [index, setIndex] = useState(0);
-  const [phase, setPhase] = useState(alreadyPassed ? 'summary' : 'answer');
-  const [result, setResult] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [draft, setDraft] = useState('idle'); // idle | pending | saving | saved | failed
-  const latest = useRef({ answers, draft: 'idle', phase });
-  latest.current = { answers, draft, phase };
-  const first = useRef(true);
-
-  // Autosave the draft shortly after every change.
-  useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    if (phase === 'results' || phase === 'summary') return;
-    setDraft('pending');
-    const timer = setTimeout(async () => {
-      setDraft('saving');
-      try {
-        await onDraft(answers);
-        setDraft('saved');
-      } catch {
-        setDraft('failed');
-      }
-    }, 700);
-    return () => clearTimeout(timer);
-  }, [answers]);
-
-  const unsaved = ['pending', 'saving', 'failed'].includes(draft) && phase !== 'results';
-  useEffect(() => {
-    if (!unsaved) return;
-    const warn = (event) => {
-      event.preventDefault();
-      event.returnValue = '';
-    };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [unsaved]);
-  // Leaving the page in the app (Back, a link) saves what is still pending.
-  useEffect(
-    () => () => {
-      const { answers: current, draft: state, phase: where } = latest.current;
-      if (['pending', 'failed'].includes(state) && where !== 'results')
-        onDraft(current).catch(() => {});
-    },
-    [],
+  const [state, dispatch] = useReducer(quizReducer(questions), undefined, () =>
+    startQuiz(questions, session),
   );
+  const [practising, setPractising] = useState(!alreadyPassed);
+  const inflight = useRef(false);
+  const heading = useRef(null);
+  const question = questions[state.index];
+  const locked = question ? state.locked[question.id] : null;
+  const answered = answeredCount(questions, state);
 
-  // The page's own Back button asks before leaving with unsaved answers.
+  // A request in flight is the only thing that must not be interrupted.
   useEffect(() => {
     registerGuard?.(() =>
-      unsaved ? window.confirm('Your latest answers have not been saved yet. Leave anyway?') : true,
+      ['saving', 'finishing'].includes(state.status)
+        ? window.confirm('Your answer is still being saved. Leave anyway?')
+        : true,
     );
     return () => registerGuard?.(null);
-  }, [unsaved]);
+  }, [state.status]);
 
-  const missing = unansweredIds(questions, answers);
-  const question = questions[index];
-
-  function leave() {
-    if (unsaved && !window.confirm('Your latest answers have not been saved yet. Leave anyway?'))
-      return;
-    onExit();
-  }
-  async function submit() {
-    setBusy(true);
-    setError('');
+  async function send(value) {
+    if (inflight.current || state.status !== 'answering' || !question) return;
+    inflight.current = true;
+    dispatch({ type: 'saving', value });
     try {
-      const res = await onSubmit(answers);
-      setResult(res);
-      setDraft('idle');
-      setPhase('results');
+      const feedback = await onAnswer(question.id, value);
+      dispatch({ type: 'saved', feedback });
     } catch (e) {
-      setError(e.message || 'Your answers could not be submitted. Please try again.');
-      setPhase('review');
+      dispatch({
+        type: 'save-failed',
+        keepDraft: question.multiple || question.type === 'match',
+        message:
+          (e.message || 'Your answer could not be saved.') +
+          ' Nothing was recorded; please try again.',
+      });
     } finally {
-      setBusy(false);
+      inflight.current = false;
     }
   }
+
+  // Feedback stays long enough to read, then the quiz moves on by itself.
+  useEffect(() => {
+    if (state.status !== 'feedback') return;
+    const timer = setTimeout(() => dispatch({ type: 'advance' }), feedbackDelayMs(locked?.correct));
+    return () => clearTimeout(timer);
+  }, [state.status, state.index]);
+  useEffect(() => {
+    if (state.status === 'answering') heading.current?.focus({ preventScroll: true });
+  }, [state.index]);
+
+  // The finish is requested once per attempt; the server grades the locked answers.
+  useEffect(() => {
+    if (state.status !== 'finishing' || inflight.current) return;
+    inflight.current = true;
+    onFinish()
+      .then((result) => dispatch({ type: 'finished', result }))
+      .catch((e) =>
+        dispatch({
+          type: 'finish-failed',
+          message: (e.message || 'Your quiz could not be submitted.') + ' Your answers are saved.',
+        }),
+      )
+      .finally(() => {
+        inflight.current = false;
+      });
+  }, [state.status]);
+
   function again() {
-    setAnswers({});
-    setIndex(0);
-    setResult(null);
-    setError('');
-    first.current = true;
-    setPhase('answer');
+    setPractising(true);
+    dispatch({ type: 'restart' });
   }
 
   if (!questions.length)
@@ -168,7 +207,7 @@ export default function QuizRunner({
       </p>
     );
 
-  if (phase === 'summary')
+  if (!practising)
     return (
       <section className="qr-card" aria-live="polite">
         <h2>You passed this activity ✓</h2>
@@ -177,15 +216,17 @@ export default function QuizRunner({
           <button type="button" className="fp-action main" onClick={onExit}>
             Back to onboarding
           </button>
-          <button type="button" className="fp-action" onClick={again}>
+          <button type="button" className="fp-action" onClick={() => setPractising(true)}>
             Practise again
           </button>
         </div>
       </section>
     );
 
-  if (phase === 'results') {
+  if (state.status === 'results') {
+    const { result } = state;
     const byId = Object.fromEntries(result.questionResults.map((r) => [r.id, r]));
+    const right = result.correctCount ?? result.questionResults.filter((r) => r.correct).length;
     return (
       <section className="qr-card" aria-live="polite">
         <h2 className={result.passed ? 'qr-pass' : 'qr-fail'}>
@@ -195,17 +236,36 @@ export default function QuizRunner({
           <strong>{result.score}%</strong> · pass mark {result.passingScore}% · attempt{' '}
           {result.attempts}
         </p>
+        <p>
+          {right} correct · {questions.length - right} incorrect of {questions.length}
+        </p>
         <p>{result.feedback}</p>
+        <h3>Review your answers</h3>
         <ol className="qr-results">
-          {questions.map((item) => (
-            <li key={item.id} className={byId[item.id]?.correct ? 'ok' : 'miss'}>
-              <strong>{byId[item.id]?.correct ? '✓ Correct' : '✗ Not quite'}</strong>
-              <span>{item.prompt}</span>
-              {!byId[item.id]?.correct && byId[item.id]?.explanation && (
-                <p className="qr-explain">{byId[item.id].explanation}</p>
-              )}
-            </li>
-          ))}
+          {questions.map((item) => {
+            const mine = state.locked[item.id];
+            return (
+              <li key={item.id} className={byId[item.id]?.correct ? 'ok' : 'miss'}>
+                <strong>{byId[item.id]?.correct ? '✓ Correct' : '✗ Not quite'}</strong>
+                <span>{item.prompt}</span>
+                {mine?.selected !== undefined && item.type !== 'match' && (
+                  <p className="qr-explain">
+                    Your answer:{' '}
+                    {[]
+                      .concat(mine.selected)
+                      .map((id) => labelOf(item, id))
+                      .join('; ')}
+                    {!byId[item.id]?.correct && mine.correctAnswer
+                      ? ` · Correct answer: ${mine.correctAnswer.map((id) => labelOf(item, id)).join('; ')}`
+                      : ''}
+                  </p>
+                )}
+                {(mine?.explanation || byId[item.id]?.explanation) && (
+                  <p className="qr-explain">{mine?.explanation || byId[item.id].explanation}</p>
+                )}
+              </li>
+            );
+          })}
         </ol>
         <div className="qr-actions">
           {result.passed ? (
@@ -215,7 +275,7 @@ export default function QuizRunner({
           ) : (
             <>
               <button type="button" className="fp-action main" onClick={again}>
-                Try again
+                Retry Quiz
               </button>
               <button type="button" className="fp-action" onClick={onExit}>
                 Back to onboarding
@@ -227,148 +287,114 @@ export default function QuizRunner({
     );
   }
 
-  const draftLabel = {
-    pending: 'Saving…',
-    saving: 'Saving…',
-    saved: 'Draft saved',
-    failed: 'Draft not saved. We will retry when you change an answer.',
-    idle: '',
-  }[draft];
+  if (state.status === 'finishing' || state.status === 'finish-failed')
+    return (
+      <section className="qr-card" aria-live="polite">
+        <h2>All {questions.length} questions answered</h2>
+        {state.status === 'finishing' ? (
+          <p role="status">Checking your score…</p>
+        ) : (
+          <>
+            <p role="alert" className="fp-inline-error">
+              {state.error}
+            </p>
+            <div className="qr-actions">
+              <button
+                type="button"
+                className="fp-action main"
+                onClick={() => dispatch({ type: 'retry-finish' })}
+              >
+                Try again
+              </button>
+              <button type="button" className="fp-action" onClick={onExit}>
+                Back to onboarding
+              </button>
+            </div>
+          </>
+        )}
+      </section>
+    );
+
+  const busy = state.status === 'saving';
+  const open = state.status === 'answering';
+  const feedback = state.status === 'feedback' ? locked : null;
+  const draft = state.draft;
+  const ready = isAnswered(question, { [question.id]: draft });
+  const explicitSubmit = question.multiple || question.type === 'match';
 
   return (
     <section className="qr-card">
-      <header className="qr-head">
-        <span className="qr-draft" role="status">
-          {draftLabel}
-        </span>
-      </header>
-
-      {phase === 'answer' && (
-        <>
-          <p className="qr-progress-label">
-            Question {index + 1} of {questions.length}
-            {missing.length > 0 && ` · ${missing.length} unanswered`}
+      <p className="qr-progress-label">
+        Question {state.index + 1} of {questions.length} · {answered} answered
+      </p>
+      <div
+        className="qr-bar"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={questions.length}
+        aria-valuenow={answered}
+        aria-valuetext={`${answered} of ${questions.length} questions answered`}
+        aria-label="Questions answered"
+      >
+        <span style={{ width: (answered / questions.length) * 100 + '%' }} />
+      </div>
+      <fieldset className="qr-question" disabled={!open}>
+        <legend ref={heading} tabIndex={-1}>
+          {question.prompt}
+        </legend>
+        {question.multiple && (
+          <p className="fp-muted">Select all that apply, then choose Submit Answer.</p>
+        )}
+        {question.type === 'match' && (
+          <p className="fp-muted">Match every item, then choose Submit Answer.</p>
+        )}
+        {!explicitSubmit && open && (
+          <p className="fp-muted">
+            Choose one answer. It is checked straight away and cannot be changed.
           </p>
-          <div
-            className="qr-bar"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={questions.length}
-            aria-valuenow={questions.length - missing.length}
-            aria-label="Questions answered"
+        )}
+        <Question
+          key={question.id}
+          question={question}
+          value={draft}
+          disabled={!open}
+          feedback={feedback}
+          onChange={(value) => {
+            if (explicitSubmit) dispatch({ type: 'choose', value });
+            else send(value);
+          }}
+        />
+      </fieldset>
+      {busy && (
+        <p role="status" className="fp-muted">
+          Checking and saving your answer…
+        </p>
+      )}
+      {state.error && open && (
+        <p role="alert" className="fp-inline-error">
+          {state.error}
+        </p>
+      )}
+      {explicitSubmit && (open || busy) && (
+        <div className="qr-actions">
+          <button
+            type="button"
+            className="fp-action main"
+            disabled={!ready || busy}
+            onClick={() => send(draft)}
           >
-            <span
-              style={{
-                width: ((questions.length - missing.length) / questions.length) * 100 + '%',
-              }}
-            />
-          </div>
-          <fieldset className="qr-question">
-            <legend>{question.prompt}</legend>
-            {question.multiple && <p className="fp-muted">Select all that apply.</p>}
-            {question.type === 'match' && <p className="fp-muted">Match every item.</p>}
-            <Question
-              question={question}
-              value={answers[question.id]}
-              onChange={(value) => setAnswers({ ...answers, [question.id]: value })}
-            />
-          </fieldset>
-          {children}
-          <div className="qr-actions">
-            <button
-              type="button"
-              className="fp-action"
-              disabled={index === 0}
-              onClick={() => setIndex(index - 1)}
-            >
-              Previous
-            </button>
-            {index < questions.length - 1 ? (
-              <button type="button" className="fp-action main" onClick={() => setIndex(index + 1)}>
-                Next
-              </button>
-            ) : (
-              <button type="button" className="fp-action main" onClick={() => setPhase('review')}>
-                Review answers
-              </button>
-            )}
-            <button type="button" className="fp-action" onClick={() => setPhase('review')}>
-              Review all
-            </button>
-          </div>
-        </>
-      )}
-
-      {phase === 'review' && (
-        <>
-          <h2>Review your answers</h2>
-          <ol className="qr-review">
-            {questions.map((item, i) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  className="qr-review-row"
-                  onClick={() => {
-                    setIndex(i);
-                    setPhase('answer');
-                  }}
-                >
-                  <span>{item.prompt}</span>
-                  <strong className={isAnswered(item, answers) ? 'ok' : 'miss'}>
-                    {isAnswered(item, answers) ? 'Answered' : 'Not answered'}
-                  </strong>
-                </button>
-              </li>
-            ))}
-          </ol>
-          {missing.length > 0 && (
-            <p role="alert" className="fp-inline-error">
-              Answer all {questions.length} questions before submitting ({missing.length} left).
-            </p>
-          )}
-          {error && (
-            <p role="alert" className="fp-inline-error">
-              {error}
-            </p>
-          )}
-          <div className="qr-actions">
-            <button type="button" className="fp-action" onClick={() => setPhase('answer')}>
-              Keep editing
-            </button>
-            <button
-              type="button"
-              className="fp-action main"
-              disabled={missing.length > 0 || busy}
-              onClick={() => setPhase('confirm')}
-            >
-              Submit assessment
-            </button>
-          </div>
-        </>
-      )}
-
-      {phase === 'confirm' && (
-        <div role="alertdialog" aria-labelledby="qr-confirm-title" className="qr-confirm">
-          <h2 id="qr-confirm-title">Submit your answers?</h2>
-          <p>
-            You will see your score straight away. The pass mark is {passingScore}%. If you do not
-            pass, you can try again.
-          </p>
-          <div className="qr-actions">
-            <button
-              type="button"
-              className="fp-action"
-              disabled={busy}
-              onClick={() => setPhase('review')}
-            >
-              Go back
-            </button>
-            <button type="button" className="fp-action main" disabled={busy} onClick={submit}>
-              {busy ? 'Submitting…' : 'Submit now'}
-            </button>
-          </div>
+            {busy ? 'Saving…' : 'Submit Answer'}
+          </button>
         </div>
       )}
+      {feedback && (
+        <Feedback
+          question={question}
+          feedback={feedback}
+          onContinue={() => dispatch({ type: 'advance' })}
+        />
+      )}
+      {open && children}
     </section>
   );
 }

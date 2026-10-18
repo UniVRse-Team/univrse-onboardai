@@ -1,10 +1,41 @@
 import React, { useEffect, useState } from 'react';
 import { accountRequest } from '../access/account-api.mjs';
 import { journeyApi } from '../access/journey-api.mjs';
-import { accessState, verificationGuide } from './learning-area-model.mjs';
+import { accessState, policyDocumentLabel, verificationGuide } from './learning-area-model.mjs';
 
 // Optional. Saved only to the employee's own record when they choose Save; HR
 // and managers cannot read it, and it never affects progress.
+// The link to a policy's full document. The Employee Handbook always has its button;
+// until an approved document is linked it says so instead of opening something made up.
+export function PolicyDocumentButton({ stepId, document }) {
+  const [note, setNote] = useState(false);
+  if (document)
+    return (
+      <a className="fp-action" href={document.url} target="_blank" rel="noopener noreferrer">
+        {policyDocumentLabel(stepId, document)}
+      </a>
+    );
+  if (stepId !== 'policies.employee-handbook') return null;
+  return (
+    <>
+      <button
+        type="button"
+        className="fp-action"
+        aria-expanded={note}
+        onClick={() => setNote(!note)}
+      >
+        View Employee Handbook
+      </button>
+      {note && (
+        <p role="status" className="fp-muted" style={{ flexBasis: '100%' }}>
+          The full Employee Handbook has not been added to this workspace yet. Ask HR to add it. The
+          summary on this page is the approved text from your onboarding plan.
+        </p>
+      )}
+    </>
+  );
+}
+
 export function WorkingPreferences({ record, onRecords }) {
   const [draft, setDraft] = useState(record?.text || '');
   const [loaded, setLoaded] = useState(Boolean(record));
@@ -135,6 +166,12 @@ export function AiReadiness({ onUpdated }) {
       </div>
     );
   const result = data.aiProficiency;
+  // 0 is "not sure yet / skip rating"; 1 to 10 are the levels.
+  const sliderLevel = Number(level) || 0;
+  const sliderText =
+    sliderLevel === 0
+      ? '0 — Not sure yet / skip rating'
+      : `${sliderLevel} — ${data.levels.find((item) => item.level === sliderLevel)?.description ?? ''}`;
   return (
     <div className="learning-activity">
       <p>
@@ -142,17 +179,30 @@ export function AiReadiness({ onUpdated }) {
         available to HR. Confidence and training interests below are private reflections for this
         visit only.
       </p>
-      <label>
-        AI experience
-        <select value={level} onChange={(e) => setLevel(e.target.value)}>
-          <option value="">Not sure yet / skip rating</option>
-          {data.levels.map((item) => (
-            <option key={item.level} value={item.level}>
-              {item.level} — {item.description}
-            </option>
+      <div className="ai-slider-field">
+        <label htmlFor="ai-experience">AI experience</label>
+        <input
+          id="ai-experience"
+          className="ai-slider"
+          type="range"
+          min={0}
+          max={10}
+          step={1}
+          value={sliderLevel}
+          onChange={(e) => setLevel(e.target.value === '0' ? '' : e.target.value)}
+          aria-valuetext={sliderText}
+        />
+        <div className="ai-slider-scale" aria-hidden="true">
+          {Array.from({ length: 11 }, (_, n) => (
+            <span key={n} className={n === sliderLevel ? 'is-selected' : ''}>
+              {n}
+            </span>
           ))}
-        </select>
-      </label>
+        </div>
+        <p className="ai-slider-text" role="status">
+          {sliderText}
+        </p>
+      </div>
       <div className="learning-columns">
         <label>
           Confidence (optional)

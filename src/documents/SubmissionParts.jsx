@@ -39,7 +39,14 @@ export function Empty({ filtered = false }) {
   );
 }
 
-export function SubmissionDetail({ item, hr = false, onClose, onUpdated, onResubmit }) {
+export function SubmissionDetail({
+  item,
+  hr = false,
+  plain = false,
+  onClose,
+  onUpdated,
+  onResubmit,
+}) {
   const [record, setRecord] = useState(item),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(''),
@@ -121,7 +128,7 @@ export function SubmissionDetail({ item, hr = false, onClose, onUpdated, onResub
             <span className="ds-eyebrow">{record.type}</span>
             <h3>{record.title}</h3>
           </div>
-          <Status status={record.status} />
+          {!plain && <Status status={record.status} />}
         </div>
         <Notice error>{error}</Notice>
         {loading && <p role="status">Loading latest details…</p>}
@@ -131,7 +138,7 @@ export function SubmissionDetail({ item, hr = false, onClose, onUpdated, onResub
             ['Employee ID', record.employeeId],
             ['Department', record.department],
             ...(record.stepTitle ? [['Documentation step', record.stepTitle]] : []),
-            ['Submitted', new Date(record.submittedAt).toLocaleString()],
+            [plain ? 'Saved' : 'Submitted', new Date(record.submittedAt).toLocaleString()],
             ['File name', record.fileName],
             ['File size', fileSize(record.bytes)],
           ].map(([label, value]) => (
@@ -141,7 +148,7 @@ export function SubmissionDetail({ item, hr = false, onClose, onUpdated, onResub
             </div>
           ))}
         </dl>
-        {record.resubmissionOf && (
+        {record.resubmissionOf && !plain && (
           <p className="ds-muted">
             This is a resubmission. The earlier review remains in the submission history.
           </p>
@@ -210,7 +217,7 @@ export function SubmissionDetail({ item, hr = false, onClose, onUpdated, onResub
               </button>
             </div>
           </form>
-        ) : (
+        ) : plain ? null : (
           <div className="ds-remarks">
             <h3>HR remarks</h3>
             <p>{record.remarks || 'No remarks yet. HR will review your submission.'}</p>

@@ -26,6 +26,7 @@ import {
 import { vertexConfig, vertexGenerateContentUrl, createAccessTokenProvider } from './vertex-ai.mjs';
 import { createProfileAutofill } from './profile-autofill.mjs';
 import { ChatError, answerNotFound } from './chat-errors.mjs';
+import { progressNote } from './alya-progress-note.mjs';
 import { createOnboardingJourney, personalSource } from './onboarding-journey.mjs';
 import { alyaAssessmentReply, parseChatAiAssessment } from './ai-proficiency.mjs';
 import { createSupportRequests } from './support-requests.mjs';
@@ -337,6 +338,22 @@ export function createApp({
     next();
   });
 
+  const documentSubmissions = journeyStore
+    ? createDocumentSubmissions({
+        firestore: journeyStore.firestore,
+        accounts,
+        onboarding: journey.onboarding,
+        files:
+          submissionFiles === undefined
+            ? createSubmissionFiles({ env, fetchImpl, getAccessToken: vertexToken })
+            : submissionFiles,
+      })
+    : null;
+  // Documentation steps follow the review of their submissions (never a click).
+  if (documentSubmissions && journey)
+    journey.onboarding.bindDocumentStatuses((accountId) =>
+      documentSubmissions.statusesFor(accountId),
+    );
   // Guest access was removed (issue #55): /api/guest-workspace/* is not
   // served, and every chat, conversation and voice route needs a signed-in
   // account.
@@ -347,17 +364,7 @@ export function createApp({
     chatMemory: () => chatService().memory,
     companyKnowledge: knowledge,
     journey,
-    submissions: journeyStore
-      ? createDocumentSubmissions({
-          firestore: journeyStore.firestore,
-          accounts,
-          onboarding: journey.onboarding,
-          files:
-            submissionFiles === undefined
-              ? createSubmissionFiles({ env, fetchImpl, getAccessToken: vertexToken })
-              : submissionFiles,
-        })
-      : null,
+    submissions: documentSubmissions,
   });
   // Both stores close asynchronously (Firestore client or SQLite file), as do
   // the account database pool and the profile and library clients.
@@ -932,7 +939,17 @@ export function createApp({
               signal,
             })
         : null;
-    return { quickQuestionId: chip?.id ?? null, reexplainOf, chip, checklist };
+    // Alya's view of the saved progress; a failed read leaves her without it.
+    let note = '';
+    if (journey && account?.role === 'employee' && !chip)
+      note = progressNote(await journey.onboarding.myOnboarding(account).catch(() => null));
+    return {
+      quickQuestionId: chip?.id ?? null,
+      reexplainOf,
+      chip,
+      checklist,
+      progressNote: note,
+    };
   }
   // A completion report in the modes without the Gemini plan step, answered by
   // the checklist agent: its reply, and the proposed change if any.

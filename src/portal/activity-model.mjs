@@ -72,6 +72,10 @@ export function resolveActivity(id, onboarding, content) {
   if (!step) return null;
   const common = { ...base, step, title: step.title, mandatory: step.required !== false };
 
+  // Read-and-confirm steps (no approved quiz or activity) have no page: they are
+  // confirmed from the onboarding page like any setup task.
+  if (areaOfId === 'policies' && step.completion !== 'check') return null;
+  if (areaOfId === 'alignment' && !alignmentKey[id.replace('alignment.', '')]) return null;
   if (areaOfId === 'policies') {
     const policy = content?.policies?.[id];
     return {
@@ -86,7 +90,7 @@ export function resolveActivity(id, onboarding, content) {
       questions: policy?.quiz?.questions || [],
       passingScore: policy?.quiz?.passingScore,
       requirement: policy?.quiz
-        ? `Acknowledge the policy, then pass the quiz (${policy.quiz.passingScore}% or more). You can retry.`
+        ? `Pass the quiz (${policy.quiz.passingScore}% or more). You can retry.`
         : 'Acknowledge the policy. No approved quiz is configured for it yet.',
     };
   }
@@ -170,5 +174,12 @@ export function activityStatus(activity, records) {
       accessState(activity.step, records?.roleTools?.tools?.[activity.id])
     ];
   if (activity.step?.status === 'done') return 'Completed';
-  return 'Not Started';
+  // Begun but not finished: an acknowledgement, a quiz attempt or locked answers.
+  const key = `${activity.area}/${activity.activityKey}`;
+  const begun =
+    records?.policies?.[activity.id]?.acknowledgedAt ||
+    records?.policies?.[activity.id]?.quiz?.attempts ||
+    records?.alignment?.[activity.activityKey]?.attempts ||
+    Object.keys(records?.sessions?.[key]?.answers || {}).length;
+  return begun || activity.step?.briefed ? 'In Progress' : 'Not Started';
 }

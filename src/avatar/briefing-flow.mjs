@@ -88,7 +88,7 @@ export function shouldFocusBriefingCard({ before, phase, typing }) {
   return appeared || finished;
 }
 
-export const dashboardPath = '/dashboard';
+export const dashboardPath = '/onboarding';
 
 // A plain left click stays in the app; a modified or middle click is left to
 // the browser (new tab or window).

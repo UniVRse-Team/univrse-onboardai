@@ -67,14 +67,14 @@ const areaTitles = {
 const requiredIds = (template) =>
   template.areas.flatMap((area) => area.steps.filter((s) => s.required).map((s) => s.id));
 const expectedRequiredByArea = {
-  documentation: 4,
-  policies: 4,
+  documentation: 3,
+  policies: 3,
   alignment: 4,
-  'role-tools': 11,
+  'role-tools': 10,
   'team-support': 4,
 };
 
-test('every built-in template is valid: the user’s areas, 11 required role-tools steps, 4 required steps in other areas, a check on each check step', () => {
+test('every built-in template is valid: the user’s areas, their required step counts, a check on each check step', () => {
   for (const track of tracks) {
     const template = builtInTemplate(track);
     assert.deepEqual(validTemplate(template, track), template, track);
@@ -84,7 +84,11 @@ test('every built-in template is valid: the user’s areas, 11 required role-too
       areaOrder,
     );
     for (const area of template.areas) {
-      assert.deepEqual([area.icon, area.title, area.description], areaTitles[area.id]);
+      // A guide link may follow the text (Role & Tools and People & Support).
+      assert.deepEqual(
+        [area.icon, area.title, area.description.replace(/\s*https:\/\/\S+$/, '')],
+        areaTitles[area.id],
+      );
       assert.equal(
         area.steps.filter((step) => step.required).length,
         expectedRequiredByArea[area.id],
@@ -98,19 +102,17 @@ test('every built-in template is valid: the user’s areas, 11 required role-too
       }
     }
     assert.ok(template.areas[0].steps.every((step) => step.completion === 'hr_verify'));
-    assert.ok(template.areas[1].steps.every((step) => step.completion === 'check'));
+    assert.equal(template.areas[1].steps[0].completion, 'check');
     assert.ok(template.areas[2].steps.every((step) => step.completion === 'self'));
     assert.equal(template.version, templateVersion);
-    assert.equal(templateVersion, 3);
-    // v1.4: company rules and conduct are choice checks; data protection and
-    // responsible AI are written checks with a rubric.
+    assert.equal(templateVersion, 8);
+    // The Employee Handbook is a choice check; the other two policy steps are read and confirmed.
     assert.deepEqual(
-      template.areas[1].steps.map((step) => [step.id, step.check.type]),
+      template.areas[1].steps.map((step) => [step.id, step.check?.type ?? null]),
       [
         ['policies.employee-handbook', 'choice'],
-        ['policies.workplace-conduct', 'choice'],
-        ['policies.data-protection', 'written'],
-        ['policies.responsible-ai', 'written'],
+        ['policies.company-sop-policies', null],
+        ['policies.sop-internal-meeting', null],
       ],
     );
     for (const step of template.areas.flatMap((a) => a.steps).filter((s) => s.check)) {
@@ -151,33 +153,18 @@ test('every built-in template is valid: the user’s areas, 11 required role-too
     }
     assert.equal(findStep(template, 'role-tools.gsheet-training-sop').step.completion, 'check');
     assert.equal(findStep(template, 'role-tools.gsheet-daily-updates').step.completion, 'check');
-    assert.equal(
-      findStep(template, 'role-tools.ai-readiness-training').step.askAlya,
-      'How does the AI proficiency self-assessment work, and what training should I complete?',
-    );
-    assert.equal(findStep(template, 'policies.responsible-ai').step.completion, 'check');
-    // One optional step: working preferences or support needs.
+    assert.equal(findStep(template, 'role-tools.ai-readiness-training').step.required, false);
+    // Two optional steps: the AI Readiness self-assessment and working preferences.
     assert.deepEqual(
       template.areas.flatMap((a) => a.steps.filter((s) => !s.required).map((s) => s.id)),
-      ['team-support.working-preferences'],
+      ['role-tools.ai-readiness-training', 'team-support.working-preferences'],
     );
   }
-  // Interns share the employee ids with intern wording; contractors substitute confidentiality-agreement.
-  assert.equal(stepIds(builtInTemplate('employee')).length, 28);
+  // Every track follows the same checklist: 3 + 3 + 4 + 10 + 4 required, 2 optional.
+  assert.equal(stepIds(builtInTemplate('employee')).length, 26);
   assert.deepEqual(stepIds(builtInTemplate('intern')), stepIds(builtInTemplate('employee')));
-  assert.equal(requiredIds(builtInTemplate('contractor')).length, 27);
-  assert.deepEqual(
-    stepIds(builtInTemplate('contractor')).filter((id) => !stepIds(builtInTemplate()).includes(id)),
-    ['documentation.confidentiality-agreement'],
-  );
-  assert.equal(
-    findStep(builtInTemplate('intern'), 'documentation.contract').step.title,
-    'Sign your internship agreement',
-  );
-  assert.equal(
-    findStep(builtInTemplate('contractor'), 'documentation.contract').step.title,
-    'Sign your service agreement',
-  );
+  assert.deepEqual(stepIds(builtInTemplate('contractor')), stepIds(builtInTemplate('employee')));
+  assert.equal(requiredIds(builtInTemplate('contractor')).length, 24);
   // A missing or unknown track is employee.
   assert.equal(trackOf(null), 'employee');
   assert.equal(trackOf({ job: { track: '' } }), 'employee');
@@ -190,7 +177,7 @@ test('choice checks do not give the answer away: opaque option ids, varied posit
     const checks = builtInTemplate(track)
       .areas.flatMap((area) => area.steps.map((step) => step.check))
       .filter((check) => check && check.type === 'choice');
-    assert.equal(checks.length, 3);
+    assert.equal(checks.length, 2);
     // Option ids are opaque: never a letter or a number that names a position.
     for (const check of checks)
       for (const option of check.options)
@@ -260,12 +247,12 @@ test('progress maths: a new employee is at 0% with the first Documentation step 
     [0, 70, false, 0],
   );
   assert.deepEqual(view.nextStep, {
-    id: 'documentation.contract',
-    title: 'Sign your employment contract',
+    id: 'documentation.tax-id-documents',
+    title: 'Pass over a copy of your IC (front and back)',
     areaId: 'documentation',
     areaTitle: 'Documentation',
     completion: 'hr_verify',
-    askAlya: 'How do I sign my employment contract?',
+    askAlya: 'How do I submit a copy of my IC?',
   });
   assert.deepEqual(Object.keys(view.areas[0]), [
     'id',
@@ -286,6 +273,7 @@ test('progress maths: a new employee is at 0% with the first Documentation step 
     'completion',
     'askAlya',
     'hasCheck',
+    'requiresDocument',
     'briefing',
     'briefingRequired',
     'briefed',
@@ -303,10 +291,10 @@ test('progress maths: a new employee is at 0% with the first Documentation step 
   assert.deepEqual(
     view.areas.map((a) => [a.done, a.total, a.meetsThreshold]),
     [
+      [0, 3, false],
+      [0, 3, false],
       [0, 4, false],
-      [0, 4, false],
-      [0, 4, false],
-      [0, 11, false],
+      [0, 10, false],
       [0, 4, false],
     ],
   );
@@ -316,14 +304,17 @@ test('progress maths: a new employee is at 0% with the first Documentation step 
   // A record with only briefedAt is still todo, and briefed.
   const briefedOnly = buildOnboarding(template, {
     steps: {
-      'documentation.contract': { briefedAt: '2026-10-15T01:00:00.000Z', briefedBy: 'read' },
+      'documentation.tax-id-documents': {
+        briefedAt: '2026-10-15T01:00:00.000Z',
+        briefedBy: 'read',
+      },
     },
   });
   assert.deepEqual(
     [briefedOnly.areas[0].steps[0].status, briefedOnly.areas[0].steps[0].briefed],
     ['todo', true],
   );
-  assert.equal(briefedOnly.nextStep.id, 'documentation.contract');
+  assert.equal(briefedOnly.nextStep.id, 'documentation.tax-id-documents');
 });
 
 test('progress maths: area percents count required steps only; submitted steps wait on HR', () => {
@@ -332,17 +323,20 @@ test('progress maths: area percents count required steps only; submitted steps w
   assert.deepEqual(
     view.areas.map((a) => [a.id, a.done, a.total, a.percent]),
     [
-      ['documentation', 0, 4, 0],
-      ['policies', 0, 4, 0],
+      ['documentation', 0, 3, 0],
+      ['policies', 0, 3, 0],
       ['alignment', 1, 4, 25],
-      ['role-tools', 0, 11, 0],
+      ['role-tools', 0, 10, 0],
       ['team-support', 0, 4, 0],
     ],
   );
   assert.equal(view.percent, 5);
   view = buildOnboarding(
     template,
-    progressOf({ 'documentation.contract': 'submitted', 'alignment.mission-values': 'done' }),
+    progressOf({
+      'documentation.tax-id-documents': 'submitted',
+      'alignment.mission-values': 'done',
+    }),
   );
   assert.equal(view.waitingOnHr, 1);
   assert.equal(view.percent, 5);
@@ -353,7 +347,7 @@ test('progress maths: area percents count required steps only; submitted steps w
   // Unknown step ids and unknown statuses are ignored.
   view = buildOnboarding(
     template,
-    progressOf({ 'documentation.nonsense': 'done', 'documentation.contract': 'approved' }),
+    progressOf({ 'documentation.nonsense': 'done', 'documentation.tax-id-documents': 'approved' }),
   );
   assert.equal(view.percent, 0);
   assert.equal(view.areas[0].steps[0].status, 'todo');
@@ -364,7 +358,7 @@ test('progress maths: area percents count required steps only; submitted steps w
   assert.equal(view.areas[4].steps.at(-1).status, 'todo');
 });
 
-test('the 70% rule: 3 of 4 (8 of 11 in role-tools) in every area is complete; 1 fewer in any area is not', () => {
+test('the 70% rule: 70% of the required steps (all 3 in three-step areas, 7 of 10 in role-tools) in every area is complete; 1 fewer in any area is not', () => {
   for (const track of tracks) {
     const template = builtInTemplate(track);
     const minForArea = (area) => {
@@ -386,7 +380,7 @@ test('the 70% rule: 3 of 4 (8 of 11 in role-tools) in every area is complete; 1 
     );
     assert.equal(view.complete, true, track);
     // The last required step of each area is still todo: the first one is next.
-    assert.equal(view.nextStep.id, template.areas[0].steps[3].id, track);
+    assert.equal(view.nextStep.id, 'alignment.role-contribution', track);
     for (const area of template.areas) {
       const fewer = { ...atThreshold };
       const count = minForArea(area);
@@ -432,7 +426,7 @@ test('next step: the first area below the threshold that has a todo step, else a
       .steps.filter((s) => s.required)
       .map((s) => s.id);
   const done = (list) => Object.fromEntries(list.map((id) => [id, 'done']));
-  // Documentation meets the threshold (3 of 4) and policies does not: next is
+  // Documentation meets the threshold (3 of 3) and policies does not: next is
   // in policies, although documentation still has a todo step.
   let view = buildOnboarding(template, progressOf(done(ids('documentation').slice(0, 3))));
   assert.equal(view.nextStep.id, 'policies.employee-handbook');
@@ -446,28 +440,31 @@ test('next step: the first area below the threshold that has a todo step, else a
       [policies[0]]: 'done',
       [policies[1]]: 'submitted',
       [policies[2]]: 'submitted',
-      [policies[3]]: 'submitted',
     }),
   );
-  assert.equal(view.nextStep.id, 'alignment.products-customers');
-  // Every area at the threshold: the first required todo step anywhere.
+  assert.equal(view.nextStep.id, 'alignment.mission-values');
+  // Every area at the threshold: the first required todo step anywhere. The
+  // three-step areas need all three; the others leave their first step todo.
   const every = Object.fromEntries(
-    template.areas.flatMap((a) =>
-      a.steps
-        .filter((s) => s.required)
-        .slice(1)
-        .map((s) => [s.id, 'done']),
-    ),
+    template.areas.flatMap((a) => {
+      const required = a.steps.filter((s) => s.required);
+      return required.slice(required.length > 3 ? 1 : 0).map((s) => [s.id, 'done']);
+    }),
   );
   view = buildOnboarding(template, progressOf(every));
   assert.equal(view.complete, true);
-  assert.equal(view.nextStep.id, 'documentation.contract');
+  assert.equal(view.nextStep.id, 'alignment.mission-values');
   // The first one submitted: the next todo step anywhere.
-  view = buildOnboarding(template, progressOf({ ...every, 'documentation.contract': 'submitted' }));
-  assert.equal(view.nextStep.id, 'policies.employee-handbook');
+  view = buildOnboarding(
+    template,
+    progressOf({ ...every, 'alignment.mission-values': 'submitted' }),
+  );
+  assert.equal(view.nextStep.id, 'role-tools.gsheet-account');
   // Every remaining required step submitted: null.
   const rest = Object.fromEntries(
-    template.areas.map((a) => [a.steps.find((s) => s.required).id, 'submitted']),
+    template.areas
+      .filter((a) => a.steps.filter((s) => s.required).length > 3)
+      .map((a) => [a.steps.find((s) => s.required).id, 'submitted']),
   );
   view = buildOnboarding(template, progressOf({ ...every, ...rest }));
   assert.equal(view.nextStep, null);
@@ -476,8 +473,8 @@ test('next step: the first area below the threshold that has a todo step, else a
 test('completion rules: self, hr_verify, check and optional steps', () => {
   const template = builtInTemplate('employee');
   const self = findStep(template, 'alignment.mission-values').step;
-  const verify = findStep(template, 'documentation.contract').step;
-  const check = findStep(template, 'policies.workplace-conduct').step;
+  const verify = findStep(template, 'documentation.tax-id-documents').step;
+  const check = findStep(template, 'policies.employee-handbook').step;
   const optional = findStep(template, 'team-support.working-preferences').step;
   const done = { status: 'done', source: 'employee' };
   const submitted = { status: 'submitted', source: 'employee' };
@@ -555,13 +552,13 @@ test('chips: the next-step chip first, personal chips up to the day after the st
   // Before, on and the day after the start date: personal chips.
   for (const today of ['2026-10-15', '2026-11-02', '2026-11-03'])
     assert.deepEqual(ids(pick('2026-11-02', today)), [
-      'step:documentation.contract',
+      'step:documentation.tax-id-documents',
       'day-one-arrival',
       'day-one-host',
     ]);
   // Two days after: knowledge chips.
   assert.deepEqual(ids(pick('2026-11-02', '2026-11-04')), [
-    'step:documentation.contract',
+    'step:documentation.tax-id-documents',
     'company-background',
     'working-hours',
   ]);
@@ -569,11 +566,11 @@ test('chips: the next-step chip first, personal chips up to the day after the st
   assert.deepEqual(ids(pick(null, '2027-01-01')).slice(1), ['day-one-arrival', 'day-one-host']);
   // The step chip asks the step's question and names the step.
   assert.deepEqual(pick(null, '2026-10-15')[0], {
-    id: 'step:documentation.contract',
-    label: 'How do I sign my employment contract?',
-    question: 'How do I sign my employment contract?',
+    id: 'step:documentation.tax-id-documents',
+    label: 'How do I submit a copy of my IC?',
+    question: 'How do I submit a copy of my IC?',
     kind: 'knowledge',
-    stepId: 'documentation.contract',
+    stepId: 'documentation.tax-id-documents',
   });
   assert.deepEqual(pick(null, '2026-10-15')[1], {
     id: 'day-one-arrival',
@@ -614,7 +611,7 @@ test('stored chip lists are checked: unknown kinds, personal chips without a typ
     null,
     [{ ...chips[0], kind: 'other' }],
     [{ ...chips[3], personal: undefined }],
-    [{ ...chips[0], id: 'step:documentation.contract' }],
+    [{ ...chips[0], id: 'step:documentation.tax-id-documents' }],
     [chips[0], chips[0]],
   ])
     assert.equal(validChips(list), null);

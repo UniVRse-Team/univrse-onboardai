@@ -126,6 +126,9 @@ export default function AlyaPresentationStage({
           )}
         </div>
       )}
+      {showing && checklist && navigate && (
+        <OnboardingChecklist checklist={checklist} navigate={navigate} variant="dock" />
+      )}
       <div className="ap-stage-caption">
         <span className="ap-live-dot" />
         {showing && avatar.phase !== 'ready' ? (

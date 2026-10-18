@@ -9,8 +9,9 @@ export async function seedPreviewSubmissions(fixture, hr, employee) {
   const third = await fixture.readyEmployee(hr, {
     profile: syntheticProfile('Daniel Tan', 'Customer Success'),
   });
+  // The preview employee starts fresh at 0%: nothing is seeded for them. Only
+  // other sample employees have documents, so HR still has submissions to review.
   const rows = [
-    [employee, 'Signed employment agreement', 'Employment Documents', 'Pending Review', ''],
     [
       other.browser,
       'Professional qualification',
@@ -18,21 +19,7 @@ export async function seedPreviewSubmissions(fixture, hr, employee) {
       'Under Review',
       'Checking the qualification details.',
     ],
-    [
-      employee,
-      'Identity document copy',
-      'Identification Document',
-      'Approved',
-      'The submitted copy is clear and complete.',
-    ],
     [third.browser, 'Leave supporting letter', 'Leave Supporting Documents', 'Pending Review', ''],
-    [
-      employee,
-      'Personal and bank details',
-      'Employment Documents',
-      'Rejected',
-      'Please upload a complete, readable copy of your personal and bank details.',
-    ],
     [
       other.browser,
       'Medical leave certificate',
@@ -42,14 +29,7 @@ export async function seedPreviewSubmissions(fixture, hr, employee) {
     ],
   ];
   for (const [browser, title, type, status, remarks] of rows) {
-    const stepId =
-      browser === employee
-        ? {
-            'Signed employment agreement': 'documentation.contract',
-            'Identity document copy': 'documentation.tax-id-documents',
-            'Personal and bank details': 'documentation.personal-bank-details',
-          }[title]
-        : null;
+    const stepId = null;
     const query = new URLSearchParams({ title, type, ...(stepId ? { stepId } : {}) });
     const name = title.toLowerCase().replaceAll(' ', '-') + '.pdf';
     const result = await browser.upload(

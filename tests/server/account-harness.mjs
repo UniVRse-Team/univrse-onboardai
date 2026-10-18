@@ -327,7 +327,11 @@ export async function startAccountsApp({
       const current = firestore.read(path) || { accountId, steps: {} };
       const at = clock.now().toISOString();
       const steps = { ...current.steps };
-      for (const area of builtInTemplate(track).areas)
+      // The stored template the server uses: current-version only; older ones are ignored.
+      const stored = firestore.read(`onboardingTemplates/${track}`);
+      const used =
+        stored?.version >= builtInTemplate(track).version ? stored : builtInTemplate(track);
+      for (const area of used.areas)
         for (const step of area.steps)
           if (step.required && step.briefing)
             steps[step.id] = { ...(steps[step.id] || {}), briefedAt: at, briefedBy: by };

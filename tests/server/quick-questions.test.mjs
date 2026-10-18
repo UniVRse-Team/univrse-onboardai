@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { startAccountsApp, syntheticProfile } from './account-harness.mjs';
 import { builtInQuickQuestions } from '../../server/onboarding-content.mjs';
+import { createMemorySubmissionFiles } from '../../server/submission-files.mjs';
+import { pdf } from './document-fixtures.mjs';
 
 async function withApp(options, check) {
   const app = await startAccountsApp(options);
@@ -34,7 +36,7 @@ const details = {
 };
 
 test('chips: the next-step chip and personal chips before the start date, knowledge chips after', async () => {
-  await withApp({}, async (app) => {
+  await withApp({ submissionFiles: createMemorySubmissionFiles() }, async (app) => {
     const hr = await app.hrBrowser();
     // The harness clock is 2026-10-15; the synthetic start date is 2026-11-02.
     const { browser } = await app.readyEmployee(hr);
@@ -42,11 +44,11 @@ test('chips: the next-step chip and personal chips before the start date, knowle
     assert.equal(first.status, 200);
     assert.deepEqual(first.body.chips, [
       {
-        id: 'step:documentation.contract',
-        label: 'How do I sign my employment contract?',
-        question: 'How do I sign my employment contract?',
+        id: 'step:documentation.tax-id-documents',
+        label: 'How do I submit a copy of my IC?',
+        question: 'How do I submit a copy of my IC?',
         kind: 'knowledge',
-        stepId: 'documentation.contract',
+        stepId: 'documentation.tax-id-documents',
       },
       {
         id: 'day-one-arrival',
@@ -64,11 +66,21 @@ test('chips: the next-step chip and personal chips before the start date, knowle
       },
     ]);
     // Completing the next step (after its briefing, v1.5) changes the step chip.
-    await browser.post('/api/me/onboarding/steps/documentation.contract/briefing', {
+    await browser.post('/api/me/onboarding/steps/documentation.tax-id-documents/briefing', {
       completion: 'read',
     });
-    assert.equal((await chipIds(browser))[0], 'step:documentation.contract');
-    await browser.post('/api/me/onboarding/steps/documentation.contract/complete');
+    assert.equal((await chipIds(browser))[0], 'step:documentation.tax-id-documents');
+    // A document step is submitted by uploading its document (not by a button).
+    await browser.upload(
+      '/api/me/document-submissions?' +
+        new URLSearchParams({
+          type: 'Employment Documents',
+          title: 'Contract',
+          stepId: 'documentation.tax-id-documents',
+        }),
+      pdf('Synthetic document. Not a real record.'),
+      'contract.pdf',
+    );
     assert.equal((await chipIds(browser))[0], 'step:documentation.personal-bank-details');
     // The day after the start date (company time): still personal; two days
     // after: knowledge. Sessions last 12 hours, so sign in again after each jump.
@@ -102,14 +114,14 @@ test('chips come from config/quickQuestions per track, with the built-in list as
     app.firestore.write('config/quickQuestions', config);
     // No start date: personal first, filled with knowledge.
     assert.deepEqual(await chipIds(browser), [
-      'step:documentation.contract',
+      'step:documentation.tax-id-documents',
       'synthetic-host',
       'synthetic-knowledge',
     ]);
     // A malformed list falls back to the built-in chips.
     app.firestore.write('config/quickQuestions', { ...config, intern: [{ id: 'x' }] });
     assert.deepEqual(await chipIds(browser), [
-      'step:documentation.contract',
+      'step:documentation.tax-id-documents',
       'day-one-arrival',
       'day-one-host',
     ]);
@@ -280,10 +292,10 @@ for (const mode of ['document-search', 'gemini-chat'])
         assert.equal(knowledge.body.source.includes('Synthetic handbook'), true);
         assert.equal(searches, 1);
         // A step chip too.
-        const stepChip = await ask(browser, chat.id, 'How do I sign my employment contract?', {
-          quickQuestionId: 'step:documentation.contract',
+        const stepChip = await ask(browser, chat.id, 'How do I submit a copy of my IC?', {
+          quickQuestionId: 'step:documentation.tax-id-documents',
         });
-        assert.equal(stepChip.body.quickQuestionId, 'step:documentation.contract');
+        assert.equal(stepChip.body.quickQuestionId, 'step:documentation.tax-id-documents');
         // An unknown chip id is an ordinary question.
         const unknown = await ask(browser, chat.id, 'Who will meet me?', {
           quickQuestionId: 'not-a-chip',
@@ -304,5 +316,37 @@ test('HR accounts have no chips: a personal chip id is an ordinary question for 
     assert.equal(answer.status, 200);
     assert.equal(answer.body.quickQuestionId, null);
     assert.equal(answer.body.coverage, 'full'); // the synthetic handbook matched
+  });
+});
+
+test('chips from a task: its own question, then related ones; an unknown task gives the general chips', async () => {
+  await withApp({}, async (app) => {
+    const hr = await app.hrBrowser();
+    const { browser } = await app.readyEmployee(hr);
+    const task = await browser.get('/api/me/quick-questions?stepId=policies.employee-handbook');
+    assert.equal(task.status, 200);
+    assert.deepEqual(
+      task.body.chips.map((chip) => [chip.id, chip.stepId]),
+      [
+        ['step:policies.employee-handbook', 'policies.employee-handbook'],
+        ['step:policies.employee-handbook#1', 'policies.employee-handbook'],
+        ['step:policies.employee-handbook#2', 'policies.employee-handbook'],
+      ],
+    );
+    assert.equal(task.body.chips[1].question, 'What are the working hours?');
+    // The AI assessment's chips are about the assessment.
+    const ai = await browser.get('/api/me/quick-questions?stepId=role-tools.ai-readiness-training');
+    assert.match(ai.body.chips[0].question, /AI proficiency self-assessment/);
+    assert.ok(ai.body.chips.every((chip) => chip.stepId === 'role-tools.ai-readiness-training'));
+    // An unknown task falls back to the general chips (the overall next step first).
+    const unknown = await browser.get('/api/me/quick-questions?stepId=nope.nothing');
+    assert.equal(unknown.body.chips[0].id, 'step:documentation.tax-id-documents');
+    // Asked in chat, a related question's chip id is kept (it is about that task).
+    const chat = (await browser.post('/api/conversations')).body;
+    const related = await ask(browser, chat.id, 'What are the working hours?', {
+      quickQuestionId: 'step:policies.employee-handbook#1',
+    });
+    assert.equal(related.status, 200, related.text);
+    assert.equal(related.body.quickQuestionId, 'step:policies.employee-handbook#1');
   });
 });

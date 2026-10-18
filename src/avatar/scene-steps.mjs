@@ -42,6 +42,13 @@ export function stepBounds(step, order, pageCounts = {}) {
   };
 }
 
+// How long a step stays on screen when the guide advances by itself (no voice):
+// reading pace, about 160 words a minute, never under 3.5 s nor over 14 s.
+export function autoAdvanceDelay(words, pages = 1) {
+  const perPage = words / Math.max(1, pages);
+  return Math.min(14000, Math.max(3500, Math.round(perPage * 380)));
+}
+
 // The scene index the stage shows, or -1 for none. Voice-led: the scene under
 // Alya's voice (-1 during a deliberate gap). Before her first audio arrives,
 // the opening scene, so slower voices never leave the stage blank.

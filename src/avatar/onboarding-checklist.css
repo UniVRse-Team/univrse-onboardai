@@ -116,6 +116,80 @@
   color: #4a6074;
 }
 
+/* The next task to do, and the finished state. */
+.obc-banner {
+  margin: 0 0 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #256a911a;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.obc-banner .obc-link {
+  text-align: left;
+  font-weight: 600;
+}
+.obc-complete {
+  background: #2e9e6b24;
+}
+.obc-task.is-current {
+  background: #256a9120;
+  box-shadow: inset 3px 0 0 #256a91;
+}
+.obc-task.is-current .obc-state {
+  color: #1d5476;
+  font-weight: 650;
+}
+
+/* While Alya presents an answer the full panel has no room beside her; the same
+   checklist stays on the stage as a pill that opens upward. */
+.obc-dock {
+  position: absolute;
+  right: 14px;
+  bottom: 8px;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: calc(100% - 28px);
+}
+.obc-dock-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid #738c9e;
+  border-radius: 999px;
+  background: #f4f8fbf2;
+  color: #233d56;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.obc-dock-toggle:focus-visible {
+  outline: 2px solid #256a91;
+  outline-offset: 2px;
+}
+.obc-dock-panel {
+  width: min(340px, 100%);
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid #738c9e;
+  background: #f4f8fbf7;
+  box-shadow: 0 8px 24px #233d5633;
+}
+/* Stacked layouts show the collapsible checklist under the stage instead. */
+@media (max-width: 980px) {
+  .obc-dock {
+    display: none;
+  }
+}
+
 /* Beside Alya on desktop: in the stage's right-hand column. */
 .ap-idle-column {
   position: absolute;

@@ -64,9 +64,14 @@ const progress = (accountId) => ({
 });
 
 test('migration 003 and 005 upgrade older templates, are idempotent and never touch progress', async () => {
-  assert.equal(templateVersion, 3);
+  assert.equal(templateVersion, 8);
   assert.ok(firestoreMigrationFiles().includes('003_onboarding_templates_v2.mjs'));
   assert.ok(firestoreMigrationFiles().includes('005_onboarding_templates_v3.mjs'));
+  assert.ok(firestoreMigrationFiles().includes('006_onboarding_templates_v4.mjs'));
+  assert.ok(firestoreMigrationFiles().includes('007_onboarding_templates_v5.mjs'));
+  assert.ok(firestoreMigrationFiles().includes('008_onboarding_templates_v6.mjs'));
+  assert.ok(firestoreMigrationFiles().includes('009_onboarding_templates_v7.mjs'));
+  assert.ok(firestoreMigrationFiles().includes('010_onboarding_templates_v8.mjs'));
   const firestore = new FakeFirestore();
   for (const track of tracks) {
     // A version-1 template is still a valid (legacy) template.
@@ -86,7 +91,8 @@ test('migration 003 and 005 upgrade older templates, are idempotent and never to
   ]);
   for (const track of tracks)
     assert.deepEqual(firestore.read(`onboardingTemplates/${track}`), builtInTemplate(track));
-  // Step ids are stable: the old progress still names steps of the new template.
+  // Progress is never touched. Steps that remain keep their ids; a step the new
+  // checklist no longer lists (documentation.contract) is simply not shown.
   const after = ['synthetic-a', 'synthetic-b'].map((id) =>
     firestore.read(`onboardingProgress/${id}`),
   );
@@ -94,7 +100,8 @@ test('migration 003 and 005 upgrade older templates, are idempotent and never to
   const ids = new Set(
     builtInTemplate('employee').areas.flatMap((area) => area.steps.map((step) => step.id)),
   );
-  assert.ok(Object.keys(before[0].steps).every((id) => ids.has(id)));
+  assert.ok(ids.has('policies.employee-handbook'));
+  assert.ok(!ids.has('documentation.contract'));
 
   // Re-running changes nothing.
   await upgradeTemplates({ firestore, log: (line) => lines.push(line) });
@@ -120,7 +127,7 @@ test('migration 003 and 005 upgrade older templates, are idempotent and never to
   assert.ok(lines.every((line) => !line.includes('contract ') && !line.includes('briefing')));
 });
 
-test('a stack where 001 and 002 already ran gets 003, 004 and 005, which upgrade its templates', async () => {
+test('a stack where 001 and 002 already ran gets 003 to 010, which upgrade its templates', async () => {
   const firestore = new FakeFirestore();
   for (const track of tracks) firestore.write(`onboardingTemplates/${track}`, versionOne(track));
   for (const name of ['001_onboarding_templates.mjs', '002_quick_questions.mjs'])
@@ -130,6 +137,11 @@ test('a stack where 001 and 002 already ran gets 003, 004 and 005, which upgrade
     '003_onboarding_templates_v2.mjs',
     '004_company_documents_areas.mjs',
     '005_onboarding_templates_v3.mjs',
+    '006_onboarding_templates_v4.mjs',
+    '007_onboarding_templates_v5.mjs',
+    '008_onboarding_templates_v6.mjs',
+    '009_onboarding_templates_v7.mjs',
+    '010_onboarding_templates_v8.mjs',
   ]);
   assert.equal(firestore.read('onboardingTemplates/employee').version, templateVersion);
   assert.deepEqual((await migrateFirestore(firestore, { log: () => {} })).applied, []);
