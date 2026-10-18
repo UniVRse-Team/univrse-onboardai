@@ -59,11 +59,12 @@ before its object and its Vertex document):
 1. The Vertex AI Search documents list, every page (`id`, `content.uri`, `indexTime`).
 2. The live objects in the bucket, every page (`name`, `timeCreated`; no older versions).
 3. Firestore `companyDocuments` with a select-only `runQuery` of `fileName`, `title`,
-   `category`, `status`, `version`, `connectedAt` and `retiredAt`. The legacy `text` field of
+   `category`, `status`, `version`, `connectedAt`, `retiredAt` and `companyId`. The legacy `text` field of
    old entries is never read.
 
 An **active** entry (`status` missing or `active`) with a file name expects one object,
-`<document id>/<file name>` (`.md` and other unparsed types as `.txt`), and one Vertex document,
+`<document id>/<file name>` (or `companies/<company id>/<document id>/<file name>` for tenant companies,
+`.md` and other unparsed types as `.txt`), and one Vertex document,
 whose ID is the first 32 hex characters of SHA-256 of `gs://<bucket>/<object name>`.
 
 ## Item kinds
