@@ -16,7 +16,10 @@
 .hr-preview-page.hr-screen .hr-screen-header .account-session {
   display: flex;
   align-items: center;
-  gap: 14px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  white-space: nowrap;
+  gap: 12px;
   color: #edf3f7;
   font-size: 12px;
 }

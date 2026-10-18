@@ -696,7 +696,7 @@ export function createAccountService({
     const at = now();
     for (let attempt = 1; ; attempt++) {
       try {
-        const row = await store.createEmployee(
+        const row = await store.createNumbered(
           {
             prefix: 'HR',
             role: 'hr',

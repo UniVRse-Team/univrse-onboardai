@@ -155,7 +155,7 @@ export function mountAccountRoutes(
   // Read-only company and profile details for HR.
   employees.get('/company', hr, async (req, res) => {
     const companyId = req.accountSession.account.companyId;
-    const company = await accounts.getCompany(companyId);
+    const { company } = await accounts.getCompany(companyId);
     const profileEnvelope = await accounts.companyProfile(companyId);
     res.json({
       company: { id: company.id, name: company.name, status: company.status },
