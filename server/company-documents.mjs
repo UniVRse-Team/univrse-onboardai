@@ -436,6 +436,7 @@ export const companyDocumentSummaryFields = Object.freeze([
   'version',
   'connectedAt',
   'retiredAt',
+  'companyId',
 ]);
 // A summary from an entry's ID and (selected) data.
 export function companyDocumentSummary(id, data = {}) {
@@ -448,6 +449,7 @@ export function companyDocumentSummary(id, data = {}) {
     version: versionOf(data),
     connectedAt: typeof data.connectedAt === 'string' ? data.connectedAt : null,
     retiredAt: typeof data.retiredAt === 'string' ? data.retiredAt : null,
+    companyId: data.companyId || 'univrse',
   };
 }
 

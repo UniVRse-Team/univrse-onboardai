@@ -1,5 +1,6 @@
 import { ChatError } from './chat-errors.mjs';
 import { companyDocumentErrors } from './company-documents.mjs';
+import { profileSourceTitle } from './company-profile.mjs';
 import { companyDocumentUri, vertexDocumentId } from './discovery-engine-documents.mjs';
 
 // The retrieval allowlist (issue #79): a Vertex AI Search passage may reach
@@ -80,6 +81,7 @@ export function activeSnapshot(summaries, bucket) {
         version: summary.version,
         connectedAt: summary.connectedAt ?? null,
         date: utcDateOf(summary.connectedAt),
+        companyId: summary.companyId || 'univrse',
       });
       byUri.set(uri, entry);
       byVertexId.set(vertexDocumentId(uri), entry);
@@ -125,12 +127,35 @@ export function entryForPassage(passage, snapshot) {
 // documentId, date: 'YYYY-MM-DD' | null, dateKind: 'uploaded' | null }. date
 // is the UTC day the entry's version was uploaded (connectedAt). title stays
 // the passage's file name.
-export function screenPassages(passages, snapshot, { limit = ADMITTED_LIMIT } = {}) {
+export function screenPassages(
+  passages,
+  snapshot,
+  { limit = ADMITTED_LIMIT, companyId = null } = {},
+) {
   const admitted = [];
   let dropped = 0;
   for (const passage of Array.isArray(passages) ? passages : []) {
+    if (passage?.title === profileSourceTitle) {
+      if (admitted.length < limit) {
+        admitted.push({
+          title: passage.title,
+          heading: passage.heading || '',
+          text: passage.text,
+          excerpt:
+            typeof passage.excerpt === 'string' ? passage.excerpt : String(passage.text ?? ''),
+          documentId: null,
+          date: null,
+          dateKind: null,
+        });
+      }
+      continue;
+    }
     const entry = entryForPassage(passage, snapshot);
     if (!entry) {
+      dropped++;
+      continue;
+    }
+    if (companyId && entry.companyId && entry.companyId !== companyId) {
       dropped++;
       continue;
     }
@@ -232,8 +257,11 @@ export function createActiveDocuments({
       cached = null;
       loading = null;
     },
-    admit(passages, current) {
-      const { admitted, dropped } = screenPassages(passages, current, { limit });
+    admit(passages, current, options) {
+      const { admitted, dropped } = screenPassages(passages, current, {
+        limit,
+        ...(options && typeof options === 'object' ? options : {}),
+      });
       if (dropped) line('dropped', dropped);
       return admitted;
     },

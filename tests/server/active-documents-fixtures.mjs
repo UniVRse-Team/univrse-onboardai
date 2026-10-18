@@ -12,7 +12,8 @@ export const summary = ({
   version = 1,
   connectedAt = '2026-10-01T09:30:00.000Z',
   retiredAt = null,
-}) => ({ id, fileName, title, category, status, version, connectedAt, retiredAt });
+  companyId = 'univrse',
+}) => ({ id, fileName, title, category, status, version, connectedAt, retiredAt, companyId });
 
 // A store stand-in with listSummaries() only; `entries` may change between
 // reads, and `reads` counts them.

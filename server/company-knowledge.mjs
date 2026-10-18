@@ -139,7 +139,7 @@ export function createCompanyKnowledge({
       }),
       active.snapshot(),
     ]);
-    return active.admit(found, current);
+    return active.admit(found, current, { companyId: opts.companyId });
   }
 
   // Lists stored documents for the HR dashboard without exposing their text.
