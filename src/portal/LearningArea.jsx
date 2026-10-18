@@ -2,15 +2,23 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Icon from './Icon';
 import { journeyApi } from '../access/journey-api.mjs';
 import { accountApi } from '../access/account-api.mjs';
-import { ActivityLauncher, ToolAccessWorkflow, VerificationGuide } from './LearningActivities';
+import {
+  ActivityLauncher,
+  PolicyDocumentButton,
+  ToolAccessWorkflow,
+  VerificationGuide,
+} from './LearningActivities';
+import { saveHandoff, stepAskHandoff } from '../access/support-flow.mjs';
 import { ROUTING_ACTIVITY, RESPONSIBILITIES_ACTIVITY, activityPath } from './activity-model.mjs';
 import {
   learningSummary,
   primaryAction,
+  quizStage,
   taskStatusLabel,
   describeLoadError,
-  focusLearningStep,
   taskResources,
+  descriptionText,
+  resourceLabel,
 } from './learning-area-model.mjs';
 import './learning-areas.css';
 
@@ -39,6 +47,11 @@ function LearningTask({
   const started = Boolean(
     policyRecord?.acknowledgedAt || policyRecord?.quiz?.attempts || alignRecord?.attempts,
   );
+  const quiz = quizStage({
+    record: areaId === 'policies' ? policyRecord?.quiz : alignRecord,
+    session:
+      records?.sessions?.[areaId === 'policies' ? `policies/${step.id}` : `alignment/${slug}`],
+  });
   const shown = started && !step.briefed ? { ...step, briefed: true } : step;
   // Without the served content we cannot tell an access step from a plain setup
   // step, so no button is offered rather than a wrong one.
@@ -49,8 +62,16 @@ function LearningTask({
         accessStepIds: accessSteps,
         hasQuiz: Boolean(content?.policies?.[step.id]?.quiz),
         acknowledged: Boolean(policyRecord?.acknowledgedAt),
+        quiz,
         tool,
       });
+
+  // Alya opens on this task: its briefing or question is handed over, as on the Documentation tasks.
+  function askAlya() {
+    const handoff = stepAskHandoff(step);
+    if (handoff) saveHandoff(window.sessionStorage, handoff);
+    navigate('/alya');
+  }
 
   async function run(task, success) {
     setBusy(true);
@@ -87,7 +108,7 @@ function LearningTask({
         <Icon name="down" size={15} />
       </summary>
       <div className="learning-task-body">
-        <p>{step.description}</p>
+        <p>{descriptionText(step)}</p>
         <VerificationGuide step={step} areaId={areaId} accessStepIds={accessSteps} />
         {step.briefing && (
           <section className="learning-resource">
@@ -108,7 +129,7 @@ function LearningTask({
         )}
         {taskResources(step).map((url) => (
           <a className="fp-action" key={url} href={url} target="_blank" rel="noopener noreferrer">
-            Open assigned resource ↗
+            {resourceLabel(step, url)}
           </a>
         ))}
         {areaId === 'role-tools' && !ai && !access && (
@@ -138,6 +159,12 @@ function LearningTask({
           </p>
         )}
         <div className="activity-actions">
+          {areaId === 'policies' && (
+            <PolicyDocumentButton
+              stepId={step.id}
+              document={content?.policies?.[step.id]?.document}
+            />
+          )}
           {primary && (
             <button
               type="button"
@@ -150,6 +177,9 @@ function LearningTask({
               {busy ? 'Saving…' : primary.label}
             </button>
           )}
+          <button type="button" className="fp-action" onClick={askAlya}>
+            <Icon name="chat" size={14} /> Ask Alya
+          </button>
         </div>
         {step.status === 'done' && (
           <p className="learning-confirmed">
@@ -251,13 +281,12 @@ export default function LearningArea({ area, onUpdated, firstDay, expanded, navi
       </summary>
       <div className="learning-area-content">
         <div className="learning-intro">
-          <p>{area.description}</p>
-          <button
-            className="fp-action main"
-            onClick={() => focusLearningStep((summary.next || area.steps[0]).id)}
-          >
-            {summary.action}
-          </button>
+          <p>{descriptionText(area)}</p>
+          {taskResources(area).map((url) => (
+            <a key={url} className="fp-action" href={url} target="_blank" rel="noopener noreferrer">
+              Open the guide ↗
+            </a>
+          ))}
         </div>
         {!summary.next && (
           <p className="learning-confirmed" role="status">
@@ -266,23 +295,6 @@ export default function LearningArea({ area, onUpdated, firstDay, expanded, navi
           </p>
         )}
         {profileError && <p role="alert">{profileError}</p>}
-        {(area.id === 'alignment' || area.id === 'role-tools') && (
-          <aside className="learning-context">
-            <strong>Your assigned role</strong>
-            <p>
-              {job
-                ? [job.jobTitle || 'Role not assigned yet', job.department]
-                    .filter(Boolean)
-                    .join(' · ')
-                : 'Loading role details…'}
-            </p>
-            <p>
-              {job?.manager ? 'Manager: ' + job.manager + '. ' : ''}Confirm your responsibilities,
-              first priorities and their connection to company objectives with your manager.
-              Detailed role objectives have not been supplied in this profile.
-            </p>
-          </aside>
-        )}
         {area.id === 'team-support' && (
           <div className="learning-columns learning-contacts">
             <article>

@@ -1,7 +1,7 @@
 // Which screen a signed-in or signed-out browser sees for a path.
 
-// HR lands on the workspace; an employee lands on their onboarding footprint.
-export const landingPath = (account) => (account?.role === 'hr' ? '/hr' : '/dashboard');
+// HR lands on the workspace; an employee lands on My onboarding (the one onboarding page).
+export const landingPath = (account) => (account?.role === 'hr' ? '/hr' : '/onboarding');
 
 const loginPaths = ['/', '/login'];
 
@@ -19,6 +19,8 @@ export function routeDecision({ accounts, loading = false, account = null, path 
     return loginPaths.includes(path) ? { type: 'render' } : { type: 'redirect', to: '/login' };
   if (account.mustChangePassword === true) return { type: 'change-password' };
   const landing = landingPath(account);
+  // /dashboard was the same page as My onboarding and is retired.
+  if (path === '/dashboard' && account.role !== 'hr') return { type: 'redirect', to: landing };
   if (loginPaths.includes(path) || path === '/signup') return { type: 'redirect', to: landing };
   if (account.role === 'hr' && path !== '/hr') return { type: 'redirect', to: landing };
   if (account.role !== 'hr' && path === '/hr') return { type: 'redirect', to: landing };

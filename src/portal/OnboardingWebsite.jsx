@@ -420,7 +420,7 @@ export default function OnboardingWebsite() {
           : path === '/hr'
             ? 'HR workspace'
             : null;
-    document.title = (accessTitle || active?.label || 'Page not found') + ' · OnboardAi';
+    document.title = (accessTitle || active?.label || 'Page not found') + ' · Onboard.AI';
   }, [path, account?.role]);
   useEffect(() => {
     // Sign-in state decides some landing pages; replace so Back does not loop.
@@ -493,10 +493,10 @@ export default function OnboardingWebsite() {
       <header className="uv-header">
         <div className="uv-header-top">
           <Link
-            to="/dashboard"
+            to="/onboarding"
             navigate={navigate}
             className="uv-brand-link"
-            aria-label="OnboardAi dashboard"
+            aria-label="Onboard.AI: My onboarding"
           >
             <Brand />
           </Link>
@@ -585,13 +585,8 @@ export default function OnboardingWebsite() {
         </nav>
       </header>
       <main className="uv-main" id="uv-main" tabIndex={-1} ref={mainRef}>
-        {['/dashboard', '/onboarding'].includes(path) ? (
-          <EmployeeFootprint
-            navigate={navigate}
-            chatPath={chatPath}
-            account={account}
-            expanded={path === '/onboarding'}
-          />
+        {path === '/onboarding' ? (
+          <EmployeeFootprint navigate={navigate} chatPath={chatPath} account={account} expanded />
         ) : activityId ? (
           <ActivityPage key={activityId} activityId={activityId} navigate={navigate} />
         ) : path === '/support' ? (
@@ -622,19 +617,10 @@ export default function OnboardingWebsite() {
           <footer className="uv-footer">
             <Brand />
             <span>YOUR NEXT CHAPTER STARTS WITH YOU.</span>
-            <span>OnboardAi / PREVIEW</span>
+            <span>Onboard.AI / PREVIEW</span>
           </footer>
         )}
       </main>
-      {!assistantPath && (
-        <Link to={chatPath} navigate={navigate} className="alya-assistant-entry">
-          <span>A</span>
-          <div>
-            Ask Alya<small>Your onboarding companion</small>
-          </div>
-          <Icon name="chat" size={19} />
-        </Link>
-      )}
       {toast && (
         <div className="uv-toast" role="status">
           <Icon name="check" size={18} />

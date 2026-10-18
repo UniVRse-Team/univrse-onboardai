@@ -1,6 +1,10 @@
 import { agentActionErrors } from './agent-actions.mjs';
 import { ChatError } from './chat-errors.mjs';
-import { TOOL_ACCESS_STEP_IDS, createTaskVerificationStore } from './task-verification.mjs';
+import {
+  ALIGNMENT_ACTIVITY_STEP_IDS,
+  TOOL_ACCESS_STEP_IDS,
+  createTaskVerificationStore,
+} from './task-verification.mjs';
 import { mountTaskVerificationRoutes } from './task-verification-routes.mjs';
 
 // HTTP routes of the onboarding journey (issues #47-#50, contract v1.1 in
@@ -36,7 +40,7 @@ export function mountOnboardingRoutes({
   // Steps proven by an activity (alignment) or by a coordinator (tool access) are
   // finished only through that verification, never by a direct request here.
   const gated = (stepId) =>
-    TOOL_ACCESS_STEP_IDS.includes(stepId) || stepId.startsWith('alignment.');
+    TOOL_ACCESS_STEP_IDS.includes(stepId) || ALIGNMENT_ACTIVITY_STEP_IDS.includes(stepId);
   const requireNotGated = (req) => {
     if (gated(req.params.stepId))
       throw new ChatError(
@@ -73,7 +77,7 @@ export function mountOnboardingRoutes({
     res.json(await journey.completeAiTraining(account(req), req.body, req.query));
   });
   me.get('/quick-questions', employee, async (req, res) => {
-    res.json(await journey.quickQuestions(account(req)));
+    res.json(await journey.quickQuestions(account(req), { stepId: req.query.stepId }));
   });
   me.get('/first-day', employee, async (req, res) => {
     res.json(await journey.myFirstDay(account(req)));

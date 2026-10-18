@@ -34,7 +34,14 @@ export const journeyApi = {
   // v1.5: what the employee confirmed: "listened" or "read".
   recordBriefing: (stepId, completion, options) =>
     changes(post('/api/me/onboarding/steps/' + enc(stepId) + '/briefing', { completion }, options)),
-  quickQuestions: (options) => accountRequest('/api/me/quick-questions', options),
+  // stepId: the chips of that task (Ask Alya from a task); none: the general chips.
+  quickQuestions: (options = {}) => {
+    const { stepId, ...rest } = options;
+    return accountRequest(
+      '/api/me/quick-questions' + (stepId ? '?stepId=' + encodeURIComponent(stepId) : ''),
+      rest,
+    );
+  },
   firstDay: (options) => accountRequest('/api/me/first-day', options),
   previewSupportRequest: ({ conversationId, messageId }, options) =>
     post('/api/me/support-requests/preview', { conversationId, messageId }, options),

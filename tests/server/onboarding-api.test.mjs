@@ -1,10 +1,16 @@
 // The onboarding footprint API (issue #47): pg-mem, the in-memory Firestore
 // fake and synthetic people only.
 import test from 'node:test';
-import { ALIGNMENT_ACTIVITIES, TOOL_ACCESS_STEP_IDS } from '../../server/task-verification.mjs';
+import {
+  ALIGNMENT_ACTIVITIES,
+  ALIGNMENT_ACTIVITY_STEP_IDS,
+  TOOL_ACCESS_STEP_IDS,
+} from '../../server/task-verification.mjs';
 import assert from 'node:assert/strict';
 import { startAccountsApp, syntheticProfile } from './account-harness.mjs';
 import { builtInTemplate } from '../../server/onboarding-content.mjs';
+import { createMemorySubmissionFiles } from '../../server/submission-files.mjs';
+import { pdf } from './document-fixtures.mjs';
 
 async function withApp(options, check) {
   const app = await startAccountsApp(options);
@@ -21,6 +27,14 @@ const withTrack = (track, name = 'Avery Example') => {
 };
 const step = (onboarding, id) =>
   onboarding.areas.flatMap((area) => area.steps).find((s) => s.id === id);
+// An employee uploads the document of a Documentation step.
+const uploadDocument = (browser, stepId) =>
+  browser.upload(
+    '/api/me/document-submissions?' +
+      new URLSearchParams({ type: 'Employment Documents', title: 'Document', stepId }),
+    pdf('Synthetic document. Not a real record.'),
+    'document.pdf',
+  );
 const area = (onboarding, id) => onboarding.areas.find((a) => a.id === id);
 
 test('every new route needs a session; employee routes refuse HR and HR routes refuse employees', async () => {
@@ -33,8 +47,8 @@ test('every new route needs a session; employee routes refuse HR and HR routes r
       ['get', '/api/me/onboarding'],
       ['post', '/api/me/onboarding/steps/role-tools.email-signature/complete'],
       ['post', '/api/me/onboarding/steps/role-tools.email-signature/reopen'],
-      ['get', '/api/me/onboarding/steps/policies.workplace-conduct/check'],
-      ['post', '/api/me/onboarding/steps/policies.workplace-conduct/check'],
+      ['get', '/api/me/onboarding/steps/policies.employee-handbook/check'],
+      ['post', '/api/me/onboarding/steps/policies.employee-handbook/check'],
       ['get', '/api/me/quick-questions'],
       ['get', '/api/me/first-day'],
       ['post', '/api/me/support-requests/preview'],
@@ -47,7 +61,7 @@ test('every new route needs a session; employee routes refuse HR and HR routes r
       ['get', '/api/hr/knowledge-gaps'],
       ['get', '/api/hr/team-insights'],
       ['get', `/api/hr/employees/${id}/onboarding`],
-      ['patch', `/api/hr/employees/${id}/onboarding/steps/documentation.contract`],
+      ['patch', `/api/hr/employees/${id}/onboarding/steps/documentation.tax-id-documents`],
       ['get', `/api/hr/employees/${id}/first-day`],
       ['put', `/api/hr/employees/${id}/first-day`],
     ];
@@ -88,7 +102,7 @@ test('a new employee sees 0% with the first Documentation step next; self steps 
     assert.equal(first.status, 200);
     assert.equal(first.body.percent, 0);
     assert.equal(first.body.track, 'employee');
-    assert.equal(first.body.nextStep.id, 'documentation.contract');
+    assert.equal(first.body.nextStep.id, 'documentation.tax-id-documents');
     assert.equal(first.body.nextStep.areaTitle, 'Documentation');
     assert.deepEqual(
       first.body.areas.map((a) => a.id),
@@ -122,7 +136,7 @@ test('a new employee sees 0% with the first Documentation step next; self steps 
       step(done.body, 'role-tools.email-signature').updatedAt,
       '2026-10-15T01:00:00.000Z',
     );
-    assert.equal(area(done.body, 'role-tools').percent, 9);
+    assert.equal(area(done.body, 'role-tools').percent, 10);
     assert.equal(done.body.percent, 2);
     // Completing it again changes nothing.
     const again = await browser.post(
@@ -176,110 +190,109 @@ test('a new employee sees 0% with the first Documentation step next; self steps 
   });
 });
 
-test('hr_verify steps wait for HR; only HR verifies them and the employee cannot undo a verification', async () => {
-  await withApp({}, async (app) => {
+test('a documentation task is complete once its document is saved; HR review is separate', async () => {
+  await withApp({ submissionFiles: createMemorySubmissionFiles() }, async (app) => {
     const hr = await app.hrBrowser();
     const hrId = (await hr.get('/api/auth/session')).body.account.id;
     const { employee, browser } = await app.readyEmployee(hr);
     const id = employee.account.id;
-    // The employee gets Alya's briefing before submitting (v1.5); HR's
-    // verification below is never gated (role-responsibilities is unbriefed).
-    const gated = await browser.post('/api/me/onboarding/steps/documentation.contract/complete');
-    assert.deepEqual([gated.status, gated.body.code], [409, 'BRIEFING_REQUIRED']);
-    await browser.post('/api/me/onboarding/steps/documentation.contract/briefing', {
-      completion: 'read',
-    });
-    const submitted = await browser.post(
-      '/api/me/onboarding/steps/documentation.contract/complete',
-    );
-    assert.equal(step(submitted.body, 'documentation.contract').status, 'submitted');
-    assert.equal(submitted.body.waitingOnHr, 1);
-    assert.equal(submitted.body.percent, 0); // waiting on HR is not done
-    assert.equal(submitted.body.nextStep.id, 'documentation.personal-bank-details');
+    const contract = 'documentation.tax-id-documents';
+    const emergency = 'documentation.personal-bank-details';
+    const docs = () => area(onboardingNow, 'documentation');
+    let onboardingNow;
+    const load = async () => (onboardingNow = (await browser.get('/api/me/onboarding')).body);
 
-    // HR sees the same picture, and the employee list shows it.
-    const seen = await hr.get(`/api/hr/employees/${id}/onboarding`);
-    assert.deepEqual(seen.body, submitted.body);
-    const listed = (await hr.get('/api/hr/employees')).body.employees[0];
-    assert.deepEqual(
-      [listed.track, listed.onboarding],
-      ['employee', { percent: 0, waitingOnHr: 1, complete: false }],
-    );
+    // A new employee: every document is still to do and nothing is complete.
+    await load();
+    assert.deepEqual([docs().percent, docs().done, docs().total], [0, 0, 3]);
+    assert.ok(docs().steps.every((item) => item.status === 'todo' && item.requiresDocument));
 
-    // The employee may withdraw their own submission, then submit again.
-    const withdrawn = await browser.post('/api/me/onboarding/steps/documentation.contract/reopen');
-    assert.equal(step(withdrawn.body, 'documentation.contract').status, 'todo');
-    await browser.post('/api/me/onboarding/steps/documentation.contract/complete');
+    // Marking a document step is refused, briefed or not: the document is the action.
+    for (const action of ['complete', 'reopen']) {
+      const refused = await browser.post(`/api/me/onboarding/steps/${contract}/${action}`);
+      assert.deepEqual([refused.status, refused.body.code], [409, 'DOCUMENT_REQUIRED'], action);
+    }
+    assert.equal(step(await load(), contract).status, 'todo');
 
-    // HR verifies.
-    const verified = await hr.patch(
-      `/api/hr/employees/${id}/onboarding/steps/documentation.contract`,
-      {
-        status: 'done',
-      },
+    // A failed upload (invalid file) completes nothing.
+    const bad = await browser.upload(
+      '/api/me/document-submissions?' +
+        new URLSearchParams({ type: 'Employment Documents', title: 'x', stepId: contract }),
+      Buffer.from('not a pdf'),
+      'fake.pdf',
     );
-    assert.equal(verified.status, 200);
-    assert.equal(step(verified.body, 'documentation.contract').status, 'done');
-    assert.equal(step(verified.body, 'documentation.contract').source, 'hr');
-    assert.equal(verified.body.waitingOnHr, 0);
-    assert.equal(verified.body.percent, 5);
+    assert.ok(bad.status >= 400);
+    assert.equal(step(await load(), contract).status, 'todo');
+    assert.equal(docs().percent, 0);
+
+    // A saved submission completes that task, and only that one.
+    const first = await uploadDocument(browser, contract);
+    assert.equal(first.status, 201, first.text);
+    await load();
+    assert.equal(step(onboardingNow, contract).status, 'done');
+    assert.equal(step(onboardingNow, emergency).status, 'todo');
+    assert.deepEqual([docs().done, docs().percent], [1, 33]);
+    // It is saved against the employee: another session sees the same, HR too.
+    const again = await app.browser();
     assert.equal(
-      app.firestore.read(`onboardingProgress/${id}`).steps['documentation.contract'].actorId,
-      hrId,
+      (await again.signIn(employee.account.username, 'employee-own-pass-1')).status,
+      200,
     );
-    // Locked for the employee.
-    const locked = await browser.post('/api/me/onboarding/steps/documentation.contract/reopen');
-    assert.deepEqual([locked.status, locked.body.code], [409, 'STEP_LOCKED']);
-    // Completing an already-verified step leaves it done.
-    const repeat = await browser.post('/api/me/onboarding/steps/documentation.contract/complete');
-    assert.equal(step(repeat.body, 'documentation.contract').source, 'hr');
+    assert.equal(step((await again.get('/api/me/onboarding')).body, contract).status, 'done');
+    assert.deepEqual((await hr.get(`/api/hr/employees/${id}/onboarding`)).body, onboardingNow);
+    // A second file for a submitted task is refused.
+    assert.equal((await uploadDocument(browser, contract)).status, 409);
 
-    // HR can verify a step that was never submitted, and unverify one.
-    await hr.patch(`/api/hr/employees/${id}/onboarding/steps/documentation.emergency-contact`, {
-      status: 'done',
+    // HR's review is separate: approving, or asking for a correction, changes no progress.
+    const approved = await hr.patch('/api/hr/document-submissions/' + first.body.submission.id, {
+      status: 'Approved',
+      revision: 1,
     });
-    const unverified = await hr.patch(
-      `/api/hr/employees/${id}/onboarding/steps/documentation.contract`,
-      { status: 'todo' },
+    assert.equal(approved.status, 200);
+    assert.equal(approved.body.submission.reviewerId, hrId);
+    assert.deepEqual([step(await load(), contract).status, docs().percent], ['done', 33]);
+    const second = await uploadDocument(browser, emergency);
+    await hr.patch('/api/hr/document-submissions/' + second.body.submission.id, {
+      status: 'Rejected',
+      remarks: 'The scan is cut off.',
+      revision: 1,
+    });
+    assert.equal(step(await load(), emergency).status, 'done'); // still submitted
+    // The employee may replace a file HR rejected; the earlier record and reason are kept.
+    const replaced = await uploadDocument(browser, emergency);
+    assert.equal(replaced.status, 201);
+    assert.equal(replaced.body.submission.resubmissionOf, second.body.submission.id);
+    const kept = (await browser.get('/api/me/document-submissions')).body.submissions;
+    assert.equal(
+      kept.find((item) => item.id === second.body.submission.id).remarks,
+      'The scan is cut off.',
     );
-    assert.equal(step(unverified.body, 'documentation.contract').status, 'todo');
-    assert.equal(step(unverified.body, 'documentation.emergency-contact').status, 'done');
+    // HR cannot un-submit a task whose document was saved.
+    const unsubmit = await hr.patch(`/api/hr/employees/${id}/onboarding/steps/${contract}`, {
+      status: 'todo',
+    });
+    assert.deepEqual([unsubmit.status, unsubmit.body.code], [409, 'DOCUMENT_SUBMITTED']);
 
-    // HR changes hr_verify steps only, with a valid status, for an existing employee.
+    // The section is complete only when every required document is saved.
+    assert.equal(docs().done, 2);
+    for (const stepId of ['documentation.employee-information-form']) {
+      assert.equal(docs().done < docs().total, true);
+      assert.equal((await uploadDocument(browser, stepId)).status, 201);
+      await load();
+    }
+    assert.deepEqual([docs().done, docs().total, docs().percent], [3, 3, 100]);
+
+    // Other hr_verify rules still hold: unknown steps and invalid bodies.
     for (const [path, body, status, code] of [
       ['alignment.mission-values', { status: 'done' }, 409, 'STEP_NOT_HR_VERIFIED'],
-      ['policies.workplace-conduct', { status: 'done' }, 409, 'STEP_NOT_HR_VERIFIED'],
+      ['policies.employee-handbook', { status: 'done' }, 409, 'STEP_NOT_HR_VERIFIED'],
       ['documentation.nope', { status: 'done' }, 404, 'STEP_NOT_FOUND'],
-      ['documentation.contract', { status: 'submitted' }, 400, 'STEP_STATUS_INVALID'],
-      ['documentation.contract', { status: 'done', note: 'x' }, 400, 'STEP_STATUS_INVALID'],
-      ['documentation.contract', [], 400, 'STEP_STATUS_INVALID'],
+      ['documentation.tax-id-documents', { status: 'submitted' }, 400, 'STEP_STATUS_INVALID'],
+      ['documentation.tax-id-documents', [], 400, 'STEP_STATUS_INVALID'],
     ]) {
       const refused = await hr.patch(`/api/hr/employees/${id}/onboarding/steps/${path}`, body);
       assert.deepEqual([refused.status, refused.body.code], [status, code], path);
     }
-    const hrId404 = await hr.get(`/api/hr/employees/${hrId}/onboarding`);
-    assert.deepEqual([hrId404.status, hrId404.body.code], [404, 'EMPLOYEE_NOT_FOUND']);
-    const nobody = await hr.patch(
-      '/api/hr/employees/00000000-0000-4000-8000-000000000000/onboarding/steps/documentation.contract',
-      { status: 'done' },
-    );
-    assert.deepEqual([nobody.status, nobody.body.code], [404, 'EMPLOYEE_NOT_FOUND']);
-
-    // Each HR change wrote an onboarding_step_verified audit row with IDs only.
-    const events = await app.rows(
-      "SELECT actor_id, target_id, detail FROM account_events WHERE action = 'onboarding_step_verified'",
-    );
-    assert.equal(events.length, 3);
-    assert.ok(events.every((e) => e.actor_id === hrId && e.target_id === id));
-    const details = events
-      .map((e) => (typeof e.detail === 'string' ? JSON.parse(e.detail) : e.detail))
-      .map((d) => `${d.stepId} ${d.status}`)
-      .sort();
-    assert.deepEqual(details, [
-      'documentation.contract done',
-      'documentation.contract todo',
-      'documentation.emergency-contact done',
-    ]);
   });
 });
 
@@ -287,7 +300,7 @@ test('policy checks: no answer in the question, a wrong answer stores nothing, a
   await withApp({}, async (app) => {
     const hr = await app.hrBrowser();
     const { employee, browser } = await app.readyEmployee(hr);
-    const path = '/api/me/onboarding/steps/policies.workplace-conduct';
+    const path = '/api/me/onboarding/steps/policies.employee-handbook';
     const required = await browser.post(`${path}/complete`);
     assert.deepEqual([required.status, required.body.code], [409, 'CHECK_REQUIRED']);
     // The check needs Alya's briefing first (v1.5).
@@ -308,21 +321,21 @@ test('policy checks: no answer in the question, a wrong answer stores nothing, a
       'sourceTitle',
     ]);
     assert.equal(question.body.type, 'choice');
-    assert.equal(question.body.stepId, 'policies.workplace-conduct');
-    assert.equal(question.body.sourceTitle, 'UniVRse - Employee Handbook');
+    assert.equal(question.body.stepId, 'policies.employee-handbook');
+    assert.equal(question.body.sourceTitle, 'Employee Handbook');
     assert.ok(question.body.options.every((o) => Object.keys(o).join() === 'id,text'));
     assert.ok(!question.text.includes('correctOptionId') && !question.text.includes('explanation'));
 
-    const expected = builtInTemplate('employee').areas[1].steps[1].check;
+    const expected = builtInTemplate('employee').areas[1].steps[0].check;
     const wrong = expected.options.find((o) => o.id !== expected.correctOptionId).id;
     const missed = await browser.post(`${path}/check`, { optionId: wrong });
     assert.equal(missed.status, 200);
     assert.equal(missed.body.correct, false);
     assert.equal(missed.body.explanation, expected.explanation);
-    assert.equal(step(missed.body.onboarding, 'policies.workplace-conduct').status, 'todo');
+    assert.equal(step(missed.body.onboarding, 'policies.employee-handbook').status, 'todo');
     // Wrong answers are not stored anywhere: the step holds its briefing only.
     assert.deepEqual(app.firestore.read(`onboardingProgress/${employee.account.id}`).steps, {
-      'policies.workplace-conduct': {
+      'policies.employee-handbook': {
         briefedAt: '2026-10-15T01:00:00.000Z',
         briefedBy: 'listened',
       },
@@ -343,18 +356,18 @@ test('policy checks: no answer in the question, a wrong answer stores nothing, a
     }
     const passed = await browser.post(`${path}/check`, { optionId: expected.correctOptionId });
     assert.equal(passed.body.correct, true);
-    assert.equal(step(passed.body.onboarding, 'policies.workplace-conduct').status, 'done');
-    assert.equal(area(passed.body.onboarding, 'policies').percent, 25);
+    assert.equal(step(passed.body.onboarding, 'policies.employee-handbook').status, 'done');
+    assert.equal(area(passed.body.onboarding, 'policies').percent, 33);
     assert.deepEqual(
       Object.keys(app.firestore.read(`onboardingProgress/${employee.account.id}`).steps),
-      ['policies.workplace-conduct'],
+      ['policies.employee-handbook'],
     );
     // A passed check is locked; a later wrong answer does not undo it.
     const locked = await browser.post(`${path}/reopen`);
     assert.deepEqual([locked.status, locked.body.code], [409, 'STEP_LOCKED']);
     const late = await browser.post(`${path}/check`, { optionId: wrong });
     assert.equal(late.body.correct, false);
-    assert.equal(step(late.body.onboarding, 'policies.workplace-conduct').status, 'done');
+    assert.equal(step(late.body.onboarding, 'policies.employee-handbook').status, 'done');
     // Completing a passed check is fine.
     assert.equal((await browser.post(`${path}/complete`)).status, 200);
     // Steps without a check.
@@ -366,7 +379,7 @@ test('policy checks: no answer in the question, a wrong answer stores nothing, a
 test('the track picks the template; 3 of 4 required steps in every area completes a contractor', async () => {
   // A grader that passes every written answer: grading has its own tests.
   const checkGrader = { grade: async () => ({ correct: true, feedback: 'Well done.' }) };
-  await withApp({ checkGrader }, async (app) => {
+  await withApp({ checkGrader, submissionFiles: createMemorySubmissionFiles() }, async (app) => {
     const hr = await app.hrBrowser();
     const { employee, browser } = await app.readyEmployee(hr, {
       profile: withTrack('contractor'),
@@ -379,14 +392,14 @@ test('the track picks the template; 3 of 4 required steps in every area complete
     assert.deepEqual(
       start.areas.map((a) => [a.id, a.total]),
       [
-        ['documentation', 4],
-        ['policies', 4],
+        ['documentation', 3],
+        ['policies', 3],
         ['alignment', 4],
-        ['role-tools', 11],
+        ['role-tools', 10],
         ['team-support', 4],
       ],
     );
-    assert.equal(step(start, 'documentation.confidentiality-agreement').completion, 'hr_verify');
+    assert.equal(step(start, 'documentation.tax-id-documents').completion, 'hr_verify');
     const template = builtInTemplate('contractor');
     // Complete enough required steps in every area to meet the 70% threshold.
     const completedSelf = [];
@@ -394,7 +407,7 @@ test('the track picks the template; 3 of 4 required steps in every area complete
       const requiredSteps = a.steps.filter((t) => t.required);
       const needed = Math.ceil(requiredSteps.length * 0.7);
       for (const s of requiredSteps.slice(0, needed)) {
-        if (s.completion === 'self' && s.id.startsWith('alignment.')) {
+        if (s.completion === 'self' && ALIGNMENT_ACTIVITY_STEP_IDS.includes(s.id)) {
           // Alignment tasks complete only through their activity.
           const direct = await browser.post(`/api/me/onboarding/steps/${s.id}/complete`);
           assert.equal(direct.status, 409);
@@ -427,8 +440,11 @@ test('the track picks the template; 3 of 4 required steps in every area complete
           completedSelf.push([a.id, s.id]);
         }
         if (s.completion === 'hr_verify') {
-          await browser.post(`/api/me/onboarding/steps/${s.id}/complete`);
-          await hr.patch(`/api/hr/employees/${id}/onboarding/steps/${s.id}`, { status: 'done' });
+          const uploaded = await uploadDocument(browser, s.id);
+          await hr.patch('/api/hr/document-submissions/' + uploaded.body.submission.id, {
+            status: 'Approved',
+            revision: 1,
+          });
         }
         if (s.completion === 'check')
           await browser.post(
@@ -442,13 +458,13 @@ test('the track picks the template; 3 of 4 required steps in every area complete
     const end = (await browser.get('/api/me/onboarding')).body;
     assert.deepEqual(
       [end.percent, end.complete, end.waitingOnHr, end.nextStep.id],
-      [75, true, 0, 'documentation.confidentiality-agreement'],
+      [84, true, 0, 'alignment.role-contribution'],
     );
     assert.ok(end.areas.every((a) => a.meetsThreshold && a.percent >= 70));
     const listed = (await hr.get('/api/hr/employees')).body.employees[0];
     assert.deepEqual(
       [listed.track, listed.onboarding],
-      ['contractor', { percent: 75, waitingOnHr: 0, complete: true }],
+      ['contractor', { percent: 84, waitingOnHr: 0, complete: true }],
     );
     // Undoing one self step drops that area to 2 of 4: no longer complete.
     const [reopenedArea, reopenedStep] = completedSelf[0];
@@ -509,7 +525,7 @@ test('a stored template replaces the built-in one; a malformed one falls back to
       areas: custom.areas.slice(1),
     });
     view = (await browser.get('/api/me/onboarding')).body;
-    assert.equal(view.nextStep.title, 'Sign your employment contract');
+    assert.equal(view.nextStep.title, 'Pass over a copy of your IC (front and back)');
     assert.ok(app.logs.some((line) => /template is malformed/.test(line)));
   });
 });

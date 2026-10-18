@@ -14,8 +14,7 @@
 // internship agreement is documentation.contract), so changing an employee's
 // track keeps the progress that still applies.
 //
-// Every track has exactly four required steps per area; a track substitutes
-// steps rather than dropping them. Optional steps (required: false) never count.
+// Every track has the same required steps per area (see the list below). Optional steps (required: false) never count.
 // Every required step has Alya's briefing (contract v1.5): 2 to 4 plain
 // sentences, at most 400 characters, with no links, lists or headings so it
 // reads well aloud, grounded in the company documents named by sourceTitle
@@ -35,15 +34,25 @@ export const areaOrder = Object.freeze([
 ]);
 export const completionTypes = Object.freeze(['self', 'hr_verify', 'check']);
 export const checkTypes = Object.freeze(['choice', 'written']);
-export const templateVersion = 3;
+export const templateVersion = 8;
 // Every area must reach this percent of its required steps (contract v1.2).
 export const completionThreshold = 70;
 export const briefingMaxLength = 400;
 export const writtenAnswerMaxLength = 600;
-export const handbookTitle = 'UniVRse - Employee Handbook';
-export const checklistTitle = 'UniVRse - New Staff Checklist';
-export const orientationTitle = 'UniVRse - Orientation & Office Tour Guide';
-export const contractTitle = 'UniVRse - Signing Your Employment Contract';
+// The company's approved documents, in its shared Drive folder.
+export const driveLinks = Object.freeze({
+  form: 'https://drive.google.com/file/d/1OHEjggUwDEWldz0371Idks70A2zy_o_A/view?usp=drivesdk',
+  handbook: 'https://drive.google.com/file/d/1LQYEoE7u4Rq-dUXplAzVzhRfwwgwM_zV/view?usp=drivesdk',
+  conduct: 'https://drive.google.com/file/d/1T-Gx7KzH5JF05hMkP8BT_ob2_bWE1qK2/view?usp=drivesdk',
+  overview: 'https://drive.google.com/file/d/1YHvTgCL_c6bLmzYU-Zko-lSAhVACyIp-/view?usp=drivesdk',
+  roleTools: 'https://drive.google.com/file/d/18-eP4w1DgzyOHK18xD8Lm0rosKMiVj8D/view?usp=drivesdk',
+  peopleSupport:
+    'https://drive.google.com/file/d/1MYmtFB6ok4CCXGPbFCIDVVio12K_EWiR/view?usp=drivesdk',
+});
+export const handbookTitle = 'Employee Handbook';
+export const checklistTitle = 'New Staff Checklist';
+export const orientationTitle = 'Orientation & Office Tour Guide';
+export const contractTitle = 'Signing Your Employment Contract';
 export const roleToolsTitle = '07 Role, Tools & AI Readiness';
 export const peopleSupportTitle = '08 People & Workplace Support';
 
@@ -93,28 +102,28 @@ const checks = {
   handbook: {
     type: 'choice',
     scenario:
-      'It is a Friday and you have no client meetings or events. Which outfit fits the dress code?',
+      'It is a Wednesday and you have no client meetings. Which outfit fits the weekday dress code?',
     options: [
-      { id: 'q4m7', text: 'Denim shorts, a plain T-shirt and clean sneakers' },
-      { id: 'z2k9', text: 'A gym tracksuit, a plain T-shirt and running shoes' },
-      { id: 'h8t3', text: 'Long jeans, a plain T-shirt and clean sneakers' },
+      { id: 'q4m7', text: 'Ripped jeans, a T-shirt and slippers' },
+      { id: 'z2k9', text: 'Short pants, a polo shirt and sandals' },
+      { id: 'h8t3', text: 'A neat shirt and clean trousers' },
     ],
     correctOptionId: 'h8t3',
     explanation:
-      'Casual Friday allows long jeans, plain or tasteful T-shirts and clean sneakers. Short pants of any kind, including denim shorts, are not allowed on any working day, and sportswear is only for company sports events.',
+      'The Employee Handbook describes smart-casual attire for the office and restricts ripped jeans, short pants, T-shirts and slippers on weekdays. Business attire may be required for client meetings.',
   },
   conduct: {
     type: 'choice',
     scenario:
       'An email that says it is from IT asks you to reply with your password so your account can be “verified”. What should you do?',
     options: [
-      { id: 'w5n1', text: 'Forward it to it-help@univrse.example, then delete it' },
+      { id: 'w5n1', text: 'Forward it to it-help@company.example, then delete it' },
       { id: 'c3x8', text: 'Reply with your password so that IT can verify you' },
       { id: 'p9v2', text: 'Open the link in it to check that the request is real' },
     ],
     correctOptionId: 'w5n1',
     explanation:
-      'Never share your password, including with IT: IT will never ask for it. Forward suspicious emails to it-help@univrse.example and do not click their links or open their attachments.',
+      'Never share your password, including with IT: IT will never ask for it. Forward suspicious emails to it-help@company.example and do not click their links or open their attachments.',
   },
   data: {
     type: 'written',
@@ -141,7 +150,7 @@ const checks = {
       },
     ],
     modelAnswer:
-      'I would decline and keep the customer list in our company systems, working on it there with my UniVRse account. Customer data is confidential and may be used only to do our jobs, so it must never be copied to personal devices or accounts.',
+      'I would decline and keep the customer list in our company systems, working on it there with my company account. Customer data is confidential and may be used only to do our jobs, so it must never be copied to personal devices or accounts.',
     explanation:
       'Customer data is confidential. It may be used only to do your job and must never be copied to personal devices or accounts, during or after your employment.',
     maxLength: writtenAnswerMaxLength,
@@ -149,11 +158,11 @@ const checks = {
   ai: {
     type: 'written',
     scenario:
-      'You are stuck on a bug and would like an AI tool to explain some UniVRse source code. A friend recommends a free AI chatbot. What do you do? Answer in two or three sentences.',
+      'You are stuck on a bug and would like an AI tool to explain some company source code. A friend recommends a free AI chatbot. What do you do? Answer in two or three sentences.',
     keyPoints: [
       {
         id: 'kp-approved-tool',
-        text: 'Uses only an approved AI tool, such as Alya or Gemini in their UniVRse company account, or asks IT before using any other tool.',
+        text: 'Uses only an approved AI tool, such as Alya or Gemini in their company account, or asks IT before using any other tool.',
       },
       {
         id: 'kp-no-unapproved-paste',
@@ -171,9 +180,9 @@ const checks = {
       },
     ],
     modelAnswer:
-      'I would not paste the code into the free chatbot, because source code must never go into an AI tool that IT has not approved. Instead I would ask Alya or Gemini in my UniVRse account, or check with IT first if I need a different tool.',
+      'I would not paste the code into the free chatbot, because source code must never go into an AI tool that IT has not approved. Instead I would ask Alya or Gemini in my company account, or check with IT first if I need a different tool.',
     explanation:
-      'Use only approved AI tools, such as Alya and Gemini in your UniVRse account. Never paste customer data, payslips or source code into an AI tool that IT has not approved.',
+      'Use only approved AI tools, such as Alya and Gemini in your company account. Never paste customer data, payslips or source code into an AI tool that IT has not approved.',
     maxLength: writtenAnswerMaxLength,
   },
   gsheetSop: {
@@ -309,21 +318,44 @@ const areaText = {
   },
 };
 
-// Every track has exactly four REQUIRED steps per area (the 70% rule is then
-// 3 of 4 everywhere); interns and contractors substitute steps instead of
-// dropping them. Optional steps never count.
+// Every track shares the same steps: Documentation 3, Policies 3, Alignment 4,
+// Role & Tools 10, People & Support 4 (the 70% rule applies to each area).
 const policies = [
   checked(
     'employee-handbook',
     'Company rules (Employee Handbook)',
-    'Read the Employee Handbook, especially working hours and dress code, then answer a short scenario.',
+    'Read the Employee Handbook, especially working hours, the dress code, claims and leave, then answer a short scenario.',
     'What does the Employee Handbook say about the dress code?',
     briefing(
       handbookTitle,
-      'Our dress code is smart casual from Monday to Thursday. On casual Friday, long jeans, plain T-shirts and clean sneakers are fine. Short pants of any kind are not allowed on any working day, and sportswear is only for company sports events. If you are unsure about an outfit, ask your manager or People and Culture first.',
+      'Normal working hours from Monday to Thursday are 9:00 to 12:30 and 1:30 to 5:30, and there is a regular internal meeting on Friday morning at 9:30. Dress smart casual: ripped jeans, short pants, T-shirts and slippers are restricted on weekdays. If you are unsure about anything, ask your manager or HR.',
     ),
     checks.handbook,
   ),
+  self(
+    'company-sop-policies',
+    'Read the Business Conduct Policy',
+    'Read the company’s Business Conduct Policy (meetings, email and messaging, confidentiality, fair competition and anti-bribery), then confirm that you have read it.',
+    'What does the Business Conduct Policy cover?',
+    briefing(
+      null,
+      'Read the Business Conduct Policy, which sets out the standards for meetings, email and messaging, confidentiality, fair competition and anti-bribery. Open it with the link on this task, then confirm here once you have read it. Ask HR if anything is unclear.',
+    ),
+  ),
+  self(
+    'sop-internal-meeting',
+    'Read and understand the SOP for Internal Meetings',
+    'Read the meeting sections of the Business Conduct Policy (preparing for, running and following up a meeting), then confirm that you have read and understood them.',
+    'How should I prepare for and follow up an internal meeting?',
+    briefing(
+      null,
+      'The Business Conduct Policy explains how to prepare for, run and follow up meetings: agree an agenda, arrive five minutes early, and record decisions and action items with owners and due dates. Read it with the link on this task, then confirm here. The regular internal meeting is on Friday at 9:30 a.m.',
+    ),
+  ),
+];
+// Approved policy checks that are not part of the current checklist (kept so HR can
+// add them to a stored template, and so the check machinery stays covered).
+const additionalPolicies = [
   checked(
     'workplace-conduct',
     'Workplace conduct & safe practices',
@@ -342,7 +374,7 @@ const policies = [
     'How should I handle customer and personal data?',
     briefing(
       handbookTitle,
-      'UniVRse handles personal data in line with Malaysia’s Personal Data Protection Act 2010. Customer data, prices, source code and business plans are confidential, during and after your employment. Use customer data only to do your job, and never copy it to a personal device or a personal account.',
+      'The company handles personal data in line with Malaysia’s Personal Data Protection Act 2010. Customer data, prices, source code and business plans are confidential, during and after your employment. Use customer data only to do your job, and never copy it to a personal device or a personal account.',
     ),
     checks.data,
   ),
@@ -353,12 +385,12 @@ const policies = [
     'Which AI tools am I allowed to use at work?',
     briefing(
       handbookTitle,
-      'Use only approved AI tools, such as Alya and Gemini in your UniVRse account. Never paste customer data, payslips or source code into an AI tool that IT has not approved. If you think you need a different tool, ask IT first.',
+      'Use only approved AI tools, such as Alya and Gemini in your company account. Never paste customer data, payslips or source code into an AI tool that IT has not approved. If you think you need a different tool, ask IT first.',
     ),
     checks.ai,
   ),
 ];
-const alignment = [
+const additionalAlignment = [
   self(
     'products-customers',
     'What the company does',
@@ -366,37 +398,49 @@ const alignment = [
     'What does the company do, and who are our customers?',
     briefing(
       handbookTitle,
-      'UniVRse builds booking and scheduling software for clinics, salons and wellness studios in Malaysia and Singapore. Our two products are UniVRse Book, for bookings and scheduling, and UniVRse Pay, for payments. About 2,400 businesses use them today.',
+      'The company builds booking and scheduling software for clinics, salons and wellness studios in Malaysia and Singapore. Our two products are Book, for bookings and scheduling, and Pay, for payments. About 2,400 businesses use them today.',
+    ),
+  ),
+];
+const alignment = [
+  self(
+    'mission-values',
+    'Read and understand the company’s Vision & Core Values',
+    'Read the Company Overview, then show what you know about the vision, mission and core values.',
+    'What are the company’s vision, mission and core values?',
+    briefing(
+      handbookTitle,
+      'Our vision is to positively impact 1 billion people’s lives through technology, creativity and innovation. Our mission is to enhance people’s lives through IT, build a globally recognised brand and bring together experts and partners. The seven core values are value driven, be happy, be trustworthy, elegant solution, evolve in learning, spread positivity and teamwork.',
     ),
   ),
   self(
-    'mission-values',
-    'Mission, values and goals',
-    'Learn what the company stands for, the values we work by and this year’s goals.',
-    'What are the company’s mission, values and goals?',
+    'social-media-accounts',
+    'Add the company social media accounts',
+    'Follow or add the company’s official social media accounts (LinkedIn, Facebook, Instagram and YouTube) from the links shared by the company, then confirm here.',
+    'Which company social media accounts should I add?',
     briefing(
-      handbookTitle,
-      'Our mission is to help small service businesses spend less time on admin and more time with their customers. We work by four values: clear over clever, own it, help first, and respect how people work. This year’s company goals are presented in the company introduction on your first day.',
+      null,
+      'The Company Overview lists the official channels: LinkedIn, Facebook, Instagram, YouTube and the website. The account links are still to be added by the company, so use only links shared by the company or its approved internal directory. Do not create accounts or post for the company without authorisation.',
     ),
   ),
   self(
     'org-structure',
-    'How teams fit together',
-    'Get to know the departments and how they work together.',
-    'How do the departments work together?',
+    'Complete Onboarding Quiz Part 1',
+    'Answer the short onboarding quiz on the company background, vision, services and core values. Read the Company Overview first.',
+    'What does the company do?',
     briefing(
       handbookTitle,
-      'UniVRse has six departments: Product and Engineering, Customer Success, Sales and Marketing, Finance, People and Culture, and Operations and Facilities. In your first month, try to meet one person from each department. Fifteen minutes with each of them is enough.',
+      'Lumora Digital was established on 23 November 2015 and is a technology and digital-solutions company. Its business areas include digital product and system development, mobile applications, interactive experiences and gamification, immersive technology and creative multimedia. Read the Company Overview before taking the quiz.',
     ),
   ),
   self(
     'role-contribution',
-    'How your role contributes',
-    'Understand how your work supports the company’s goals.',
-    'How does my role contribute to the company’s goals?',
+    'Complete Onboarding Quiz Part 2',
+    'Answer the short onboarding quiz on company culture, core values and workplace do’s and don’ts. Read the Company Overview first.',
+    'How do the core values apply at work?',
     briefing(
       handbookTitle,
-      'Everything we do helps small service businesses spend less time on admin and more time with their customers. Ask your manager how your work connects to this year’s company goals, and keep that link in mind when you plan your first tasks.',
+      'Part 2 applies the core values to workplace situations, such as raising an issue through the right channel, working as a team and acting professionally with clients. Never promise anything you are not authorised to promise. Read the Company Overview before taking the quiz.',
     ),
   ),
 ];
@@ -513,16 +557,16 @@ const roleTools = [
     ),
     checks.gsheetDailyUpdates,
   ),
-  self(
-    'ai-readiness-training',
-    'Complete your AI Readiness self-assessment and practice task',
-    'Rate your AI experience from 1 to 10 (or skip the rating) to get a tailored learning path and complete a quick practice task.',
-    'How does the AI proficiency self-assessment work, and what training should I complete?',
-    briefing(
-      roleToolsTitle,
-      'Rate your AI experience from 1 to 10, or skip the rating if you are not sure yet. Alya will give you a tailored beginner, intermediate, or advanced learning path with a short practice exercise. Complete that practice exercise to finish this step.',
+  {
+    ...self(
+      'ai-readiness-training',
+      'AI Readiness self-assessment and practice task (optional)',
+      'Rate your AI experience from 1 to 10 (or skip the rating) to get a tailored learning path and a quick practice task. This never affects your progress.',
+      'How does the AI proficiency self-assessment work, and what training should I complete?',
+      null,
     ),
-  ),
+    required: false,
+  },
 ];
 const teamSupport = [
   self(
@@ -569,149 +613,185 @@ const teamSupport = [
   ),
   workingPreferences,
 ];
-const emergencyContact = hrVerify(
-  'emergency-contact',
-  'Submit your emergency contact form',
-  'Add an emergency contact in UniVRse HR, under My Profile. HR verifies it.',
-  'How do I add my emergency contact?',
-  briefing(
-    checklistTitle,
-    'Add an emergency contact in UniVRse HR, under My Profile, if you have not done so already. The New Staff Checklist asks you to do this in your first week. Once it is there, mark this step as submitted and HR verifies it.',
+// Documentation is the same for every track: three documents the employee saves.
+const documentation = [
+  hrVerify(
+    'tax-id-documents',
+    'Pass over a copy of your IC (front and back)',
+    'Upload a clear copy of the front and back of your IC.',
+    'How do I submit a copy of my IC?',
+    briefing(
+      null,
+      'Upload a clear copy of the front and back of your IC. The task is complete once your document is saved. HR reviews documents separately.',
+    ),
   ),
+  hrVerify(
+    'personal-bank-details',
+    'Add your details into the Employees/Interns Record',
+    'Upload your completed details for the Employees/Interns Record.',
+    'How do I add my details to the Employees/Interns Record?',
+    briefing(
+      null,
+      'Upload your completed details for the Employees and Interns Record. The task is complete once your document is saved. HR reviews documents separately.',
+    ),
+  ),
+  hrVerify(
+    'employee-information-form',
+    'Upload your Employee Information Form',
+    'Download the Employee Information Form, complete it, then upload the completed form.',
+    'How do I submit my Employee Information Form?',
+    briefing(
+      null,
+      'Upload your completed Employee Information Form. The task is complete once your document is saved. HR reviews documents separately.',
+    ),
+  ),
+];
+const stepsByTrack = Object.fromEntries(
+  tracks.map((track) => [
+    track,
+    {
+      documentation,
+      policies,
+      alignment,
+      'role-tools': roleTools,
+      'team-support': teamSupport,
+    },
+  ]),
 );
-const stepsByTrack = {
-  employee: {
-    documentation: [
-      hrVerify(
-        'contract',
-        'Sign your employment contract',
-        'Sign your contract electronically in UniVRse HR, then mark it as submitted. HR verifies it.',
-        'How do I sign my employment contract?',
-        briefing(
-          contractTitle,
-          'You sign your employment contract electronically in UniVRse HR, within 5 working days of receiving it. Before you sign, check your job title, start date, salary, probation period and work location, and ask People and Culture if anything looks wrong. A signed copy is emailed to you, and HR then verifies it.',
-        ),
-      ),
-      hrVerify(
-        'personal-bank-details',
-        'Submit your personal and bank details',
-        'Fill in the onboarding form with your bank, EPF and tax details. HR verifies it.',
-        'What details do I need for the onboarding form?',
-        briefing(
-          contractTitle,
-          'The onboarding form in UniVRse HR asks for your IC or passport number, home address, bank account, EPF number, income tax number and an emergency contact. Please finish it before your first day, so that your account, laptop and pay are ready. HR verifies the details once you submit them.',
-        ),
-      ),
-      hrVerify(
-        'tax-id-documents',
-        'Show your tax and ID documents',
-        'Bring your original IC or passport, certificates and tax numbers on day 1. HR verifies them.',
-        'Which documents do I bring on my first day?',
-        briefing(
-          contractTitle,
-          'On your first day, People and Culture checks your original documents at 9:15 in the morning. Bring your MyKad or passport, your highest education certificate and transcript, a bank statement or bank card, and your EPF and income tax numbers if you have them. HR then verifies them.',
-        ),
-      ),
-      emergencyContact,
-    ],
-    policies,
-    alignment,
-    'role-tools': roleTools,
-    'team-support': teamSupport,
-  },
-};
 
-// Interns: the same steps, with intern wording in documentation.
-stepsByTrack.intern = {
-  ...stepsByTrack.employee,
-  documentation: [
-    hrVerify(
-      'contract',
-      'Sign your internship agreement',
-      'Sign your internship agreement in UniVRse HR, then mark it as submitted. HR verifies it.',
-      'How do I sign my internship agreement?',
-      briefing(
-        contractTitle,
-        'Interns sign an internship agreement, not the employment contract. It sets out your monthly allowance, your internship dates and the benefits for interns. Sign it electronically in UniVRse HR, and ask People and Culture if anything is unclear. HR then verifies it.',
-      ),
-    ),
-    hrVerify(
-      'personal-bank-details',
-      'Submit your personal and bank details',
-      'Fill in the onboarding form with the bank details your allowance is paid to. HR verifies it.',
-      'What details do I need for the onboarding form?',
-      briefing(
-        contractTitle,
-        'Fill in the onboarding form in UniVRse HR with your personal details, an emergency contact and the bank account your allowance is paid to. Please finish it before your first day. HR verifies the details once you submit them.',
-      ),
-    ),
-    hrVerify(
-      'tax-id-documents',
-      'Show your ID and placement documents',
-      'Bring your original IC or passport, your university placement letter and insurance form on day 1. HR verifies them.',
-      'Which documents do interns bring on the first day?',
-      briefing(
-        contractTitle,
-        'On your first day, People and Culture checks your original documents at 9:15 in the morning. Bring your MyKad or passport, your university placement letter and your insurance form. HR then verifies them.',
-      ),
-    ),
-    emergencyContact,
-  ],
-};
-
-// Contractors: substitutes for the documentation steps that do not apply (an
-// employment contract, payroll forms), while sharing the standard policies,
-// alignment, role-tools, and team-support steps.
-stepsByTrack.contractor = {
-  documentation: [
-    hrVerify(
-      'contract',
-      'Sign your service agreement',
-      'Sign the service agreement for your engagement, then mark it as submitted. HR verifies it.',
-      'How do I sign my service agreement?',
-      briefing(
-        null,
-        'Your service agreement sets out the terms of your engagement with UniVRse. Read it carefully, and ask People and Culture about anything that is unclear before you sign. Once you mark it as submitted, HR verifies it.',
-      ),
-    ),
-    hrVerify(
-      'personal-bank-details',
-      'Submit your billing and bank details',
-      'Give HR the billing details and bank account your invoices are paid to. HR verifies them.',
-      'Which billing and bank details does HR need from me?',
-      briefing(
-        null,
-        'HR needs your billing details and the bank account your invoices are paid to. Check that they match your service agreement before you submit them. HR then verifies them.',
-      ),
-    ),
-    hrVerify(
-      'tax-id-documents',
-      'Show your ID document',
-      'Show your IC or passport so your building access can be set up. HR verifies it.',
-      'Which ID document do I need to show?',
-      briefing(
-        orientationTitle,
-        'Show your MyKad or passport so that your building access can be set up. On your first day, register with the lobby guard using your IC, and from day 2 use your UniVRse access card at the lobby gates. HR verifies your document.',
-      ),
-    ),
-    hrVerify(
-      'confidentiality-agreement',
-      'Sign the confidentiality agreement (NDA)',
-      'Sign the confidentiality agreement that covers customer data, prices and source code. HR verifies it.',
-      'What does the confidentiality agreement cover?',
-      briefing(
-        handbookTitle,
-        'The confidentiality agreement covers customer data, prices, source code and business plans. Keep them confidential during and after your engagement, and use customer data only to do your work. HR verifies the signed agreement.',
-      ),
-    ),
-  ],
-  policies,
-  alignment,
-  'role-tools': roleTools,
-  'team-support': teamSupport,
-};
+// The same shape as a template step, for HR-stored templates and tests.
+const asTemplateSteps = (areaId, list) =>
+  list.map(({ slug, check, briefing: brief, ...step }) => ({
+    id: `${areaId}.${slug}`,
+    ...step,
+    briefing: brief ? { ...brief } : null,
+    ...(check ? { check: structuredClone(check) } : {}),
+  }));
+export const additionalPolicySteps = asTemplateSteps('policies', additionalPolicies);
+export const additionalAlignmentSteps = asTemplateSteps('alignment', additionalAlignment);
 
 // The template document for a track, as stored in onboardingTemplates/{track}.
+// Related questions Alya suggests when an employee asks about a task (after the task's
+// own question). They are only prompts: Alya's answers come from the company documents.
+export const stepQuestions = Object.freeze({
+  'documentation.tax-id-documents': [
+    'Which file types can I upload?',
+    'Who can see the documents I upload?',
+  ],
+  'documentation.personal-bank-details': [
+    'What details go into the Employees/Interns Record?',
+    'How do I correct my details later?',
+  ],
+  'documentation.employee-information-form': [
+    'What do I need to fill in on the Employee Information Form?',
+    'Which documents are on the form’s checklist?',
+  ],
+  'policies.employee-handbook': [
+    'What are the working hours?',
+    'What is the dress code?',
+    'How do I apply for annual leave?',
+  ],
+  'policies.company-sop-policies': [
+    'What are the rules for email and chat messages?',
+    'What should I do if I receive a gift from a client?',
+  ],
+  'policies.sop-internal-meeting': [
+    'What should I prepare before a meeting?',
+    'How are meeting minutes and action items recorded?',
+  ],
+  'alignment.mission-values': [
+    'What are the company’s seven core values?',
+    'What is the difference between the vision and the mission?',
+  ],
+  'alignment.social-media-accounts': [
+    'Which social media accounts does the company have?',
+    'Can I post about the company on my own account?',
+  ],
+  'alignment.org-structure': ['When was the company established?', 'What does the company do?'],
+  'alignment.role-contribution': [
+    'What does “Be trustworthy” mean at work?',
+    'How should I raise a concern at work?',
+  ],
+  'role-tools.gsheet-account': [
+    'Which Google account should I use for GSheet?',
+    'What if I cannot open the assigned sheet?',
+  ],
+  'role-tools.individual-gsheet': [
+    'Where do I find the invitation to my Individual GSheet?',
+    'What can I do in my Individual GSheet?',
+  ],
+  'role-tools.gsheet-training-sop': [
+    'Where do I find my tasks in the GSheet?',
+    'How do I update a task’s status?',
+  ],
+  'role-tools.drive-shared-folders': [
+    'Which Drive folders do I need for my role?',
+    'Who do I ask if I cannot open a shared folder?',
+  ],
+  'role-tools.gmail-google-chat': [
+    'How do I use Google Chat for my team?',
+    'Which account do I use for Gmail?',
+  ],
+  'role-tools.gmail-profile-picture': [
+    'What kind of profile picture is suitable?',
+    'How do I change my Gmail profile picture?',
+  ],
+  'role-tools.professional-email': [
+    'Which email address should I use for work?',
+    'How do I check that my work email works?',
+  ],
+  'role-tools.link-official-email': [
+    'How do I add my work email to Gmail?',
+    'How can I test that the linked email works?',
+  ],
+  'role-tools.email-signature': [
+    'What details go in my email signature?',
+    'Where do I set up the signature in Gmail?',
+  ],
+  'role-tools.gsheet-daily-updates': [
+    'What should a daily update include?',
+    'What should I do when I am blocked on a task?',
+  ],
+  'role-tools.ai-readiness-training': [
+    'What do the AI proficiency levels from 1 to 10 mean?',
+    'What happens if I skip the AI self-assessment?',
+    'What is the practice task after the assessment?',
+  ],
+  'team-support.company-chat-groups': [
+    'Which company chat groups should I join?',
+    'Who shares the chat group links?',
+  ],
+  'team-support.department-chat-group': [
+    'How do I join my department’s chat group?',
+    'Who do I ask if I have not received the invite?',
+  ],
+  'team-support.talent-personality-test': [
+    'How do I take the Talent Personality Test?',
+    'Who do I share the result with?',
+  ],
+  'team-support.mbti-personality-test': [
+    'How do I take the MBTI Personality Test?',
+    'How is the MBTI result used?',
+  ],
+  'team-support.working-preferences': [
+    'What can I share about how I prefer to work?',
+    'Who can see what I share?',
+  ],
+});
+
+// The company document each task points to (added to the task's description as a link).
+const stepLinks = {
+  'documentation.employee-information-form': driveLinks.form,
+  'policies.company-sop-policies': driveLinks.conduct,
+  'policies.sop-internal-meeting': driveLinks.conduct,
+  'alignment.mission-values': driveLinks.overview,
+  'alignment.org-structure': driveLinks.overview,
+  'alignment.role-contribution': driveLinks.overview,
+};
+const stepLink = (id) => stepLinks[id] || null;
+// People & Support has one guide, linked once on the area. Role & Tools has none.
+const areaLinks = { 'team-support': driveLinks.peopleSupport };
+
 export function builtInTemplate(track = defaultTrack) {
   const chosen = tracks.includes(track) ? track : defaultTrack;
   return {
@@ -722,10 +802,11 @@ export function builtInTemplate(track = defaultTrack) {
       id: areaId,
       icon: areaText[areaId].icon,
       title: areaText[areaId].title,
-      description: areaText[areaId].description,
+      description: [areaText[areaId].description, areaLinks[areaId]].filter(Boolean).join(' '),
       steps: stepsByTrack[chosen][areaId].map(({ slug, check, briefing: brief, ...step }) => ({
         id: `${areaId}.${slug}`,
         ...step,
+        description: [step.description, stepLink(`${areaId}.${slug}`)].filter(Boolean).join(' '),
         briefing: brief ? { ...brief } : null,
         ...(check ? { check: structuredClone(check) } : {}),
       })),

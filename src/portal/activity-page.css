@@ -234,3 +234,52 @@
   flex: 1 1 220px;
   text-align: left;
 }
+
+/* Immediate feedback: colour is never the only signal (each state also has a
+   ✓ / ✗ label), and a locked question reads as finished, not disabled. */
+.qr-question:disabled {
+  opacity: 1;
+}
+.qr-question:disabled .qr-option {
+  cursor: default;
+}
+.qr-card .qr-option.right,
+.qr-card .qr-match-row.right {
+  border-color: #1f7a4f;
+  background: rgba(46, 158, 107, 0.14);
+}
+.qr-card .qr-option.wrong,
+.qr-card .qr-match-row.wrong {
+  border-color: #b4412f;
+  background: rgba(180, 65, 47, 0.1);
+}
+.qr-mark {
+  flex: 0 0 auto;
+  font-weight: 650;
+  font-size: 0.85rem;
+}
+.qr-feedback {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  border-left-width: 5px;
+}
+.qr-feedback.right {
+  border-left-color: #1f7a4f;
+}
+.qr-feedback.wrong {
+  border-left-color: #b4412f;
+}
+.qr-feedback p {
+  margin: 6px 0 0;
+}
+@media (max-width: 560px) {
+  .qr-card .qr-option {
+    flex-wrap: wrap;
+  }
+  .qr-mark {
+    flex-basis: 100%;
+    padding-left: 32px;
+  }
+}

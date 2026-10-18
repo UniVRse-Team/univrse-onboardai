@@ -54,6 +54,8 @@ export function stepActions(step) {
   if (completion === 'self') {
     if (status === 'done') actions.push('reopen');
     else if (ready) actions.push('complete');
+  } else if (completion === 'hr_verify' && step.requiresDocument) {
+    // Finished by saving its required document, not by a button.
   } else if (completion === 'hr_verify') {
     if (status === 'todo' && ready) actions.push('submit');
     else if (status === 'submitted') actions.push('withdraw');

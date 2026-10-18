@@ -14,10 +14,11 @@ test('older preview URLs lead to /alya', () => {
 });
 test('current routes are not redirected', () => {
   assert.equal(legacyRedirect('/alya'), null);
-  assert.equal(legacyRedirect('/dashboard'), null);
+  assert.equal(legacyRedirect('/onboarding'), null);
   assert.equal(legacyRedirect('/miranda'), null);
 });
 
-test('retired submission page redirects to the existing dashboard', () => {
-  assert.equal(legacyRedirect('/documents'), '/dashboard');
+test('retired submission page and the old dashboard redirect to My onboarding', () => {
+  assert.equal(legacyRedirect('/documents'), '/onboarding');
+  assert.equal(legacyRedirect('/dashboard'), '/onboarding');
 });

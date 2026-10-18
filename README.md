@@ -21,7 +21,7 @@ Open [the website](http://localhost:3000/) or [Alya's chat](http://localhost:300
 
 ### Local UI preview without sign-in
 
-Run `npm run dev:preview` and open http://localhost:3000/dashboard or
+Run `npm run dev:preview` and open http://localhost:3000/onboarding or
 http://localhost:3000/hr. The bottom preview bar switches between employee, HR,
 and Alya pages without login. Stop any other server on port 3000 first.
 
@@ -95,13 +95,13 @@ npm.cmd start
 
 ## Pages
 
-| Address       | Contents                                                                                          |
-| ------------- | ------------------------------------------------------------------------------------------------- |
-| `/`, `/login` | Employee/HR sign-in                                                                               |
-| `/dashboard`  | The employee's onboarding footprint: overall progress, the five areas, steps and the next step    |
-| `/alya`       | Alya's presentation stage beside the chat, quick-question chips and Ask HR                        |
-| `/mira`       | Old `/mira` links redirect to `/alya`.                                                            |
-| `/hr`         | The HR workspace: employee accounts, onboarding, support requests, insights and company documents |
+| Address       | Contents                                                                                                     |
+| ------------- | ------------------------------------------------------------------------------------------------------------ |
+| `/`, `/login` | Employee/HR sign-in                                                                                          |
+| `/onboarding` | The employee's one onboarding page: overall progress, the five areas and steps (`/dashboard` redirects here) |
+| `/alya`       | Alya's presentation stage beside the chat, quick-question chips and Ask HR                                   |
+| `/mira`       | Old `/mira` links redirect to `/alya`.                                                                       |
+| `/hr`         | The HR workspace: employee accounts, onboarding, support requests, insights and company documents            |
 
 Every app page needs a signed-in account; a signed-out visitor is sent to `/login` (issue #55).
 
@@ -109,7 +109,7 @@ Inside UniVRse, Launchpad and the handbook page have already been removed. Their
 
 ## Employee document submissions
 
-Employees upload within the Documentation section of `/dashboard`; HR uses `/hr#submissions`. See [document submission setup and review notes](docs/document-submissions.md) for the private storage configuration, local preview behavior, and file list.
+Employees upload within the Documentation section of `/onboarding`; HR uses `/hr#submissions`. See [document submission setup and review notes](docs/document-submissions.md) for the private storage configuration, local preview behavior, and file list.
 
 ## Understand and edit the code
 

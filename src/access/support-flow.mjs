@@ -203,6 +203,17 @@ export function takeHandoff(storage, accept = ['chip']) {
     return null;
   }
 }
+// The task a waiting hand-off is about, without taking it (Alya's chips follow that task).
+export function peekHandoffStepId(storage) {
+  try {
+    const handoff = readHandoff(JSON.parse(storage.getItem(handoffKey)));
+    if (!handoff) return null;
+    if (handoff.kind === 'briefing') return handoff.stepId;
+    return handoff.id.startsWith('step:') ? handoff.id.slice(5).split('#')[0] : null;
+  } catch {
+    return null;
+  }
+}
 export const briefingHandoff = (stepId) => ({ kind: 'briefing', stepId });
 // What "Ask Alya" on a dashboard step hands over: its briefing when it has one,
 // otherwise its chip question (or nothing).

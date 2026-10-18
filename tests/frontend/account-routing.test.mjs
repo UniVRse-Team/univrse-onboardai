@@ -17,7 +17,7 @@ test('accounts off: only the sign-in page exists, there is no guest fallback', (
 });
 test('landing page follows account.role', () => {
   assert.equal(landingPath(hr), '/hr');
-  assert.equal(landingPath(emp), '/dashboard');
+  assert.equal(landingPath(emp), '/onboarding');
 });
 test('signed-in users leave the login pages by role', () => {
   assert.deepEqual(routeDecision({ accounts: true, account: hr, path: '/login' }), {
@@ -26,7 +26,7 @@ test('signed-in users leave the login pages by role', () => {
   });
   assert.deepEqual(routeDecision({ accounts: true, account: emp, path: '/' }), {
     type: 'redirect',
-    to: '/dashboard',
+    to: '/onboarding',
   });
 });
 test('signed-out visitors to any app route go to /login', () => {
@@ -49,11 +49,16 @@ test('signed-out visitors to any app route go to /login', () => {
     assert.deepEqual(routeDecision({ accounts: true, path }), { type: 'render' });
 });
 test('an employee only sees employee pages; HR only sees /hr', () => {
-  for (const path of ['/dashboard', '/onboarding', '/alya', '/support', '/profile'])
+  for (const path of ['/onboarding', '/alya', '/support', '/profile'])
     assert.deepEqual(routeDecision({ accounts: true, account: emp, path }), { type: 'render' });
   assert.deepEqual(routeDecision({ accounts: true, account: emp, path: '/hr' }), {
     type: 'redirect',
-    to: '/dashboard',
+    to: '/onboarding',
+  });
+  // The retired /dashboard page is the same as My onboarding.
+  assert.deepEqual(routeDecision({ accounts: true, account: emp, path: '/dashboard' }), {
+    type: 'redirect',
+    to: '/onboarding',
   });
   assert.deepEqual(routeDecision({ accounts: true, account: hr, path: '/hr' }), {
     type: 'render',
@@ -64,7 +69,7 @@ test('an employee only sees employee pages; HR only sees /hr', () => {
   });
   assert.deepEqual(routeDecision({ accounts: true, account: emp, path: '/signup' }), {
     type: 'redirect',
-    to: '/dashboard',
+    to: '/onboarding',
   });
 });
 test('forced change shows before anything else', () => {

@@ -7,14 +7,14 @@ import {
   resolveActivity,
   unansweredIds,
 } from '../../src/portal/activity-model.mjs';
-import { builtInTemplate } from '../../server/onboarding-content.mjs';
+import { templateWithAdditionalPolicies } from '../server/template-fixtures.mjs';
 import { buildVerificationContent } from '../../server/verification-content.mjs';
 import {
   publicVerificationContent,
   TOOL_ACCESS_STEP_IDS,
 } from '../../server/task-verification.mjs';
 
-const onboarding = { areas: builtInTemplate('employee').areas };
+const onboarding = { areas: templateWithAdditionalPolicies('employee').areas };
 const content = {
   ...publicVerificationContent(buildVerificationContent()),
   toolAccessSteps: TOOL_ACCESS_STEP_IDS,
@@ -46,7 +46,10 @@ test('each learning task resolves to the right kind of page; Documentation and u
   assert.equal(kind('team-support.working-preferences'), 'prefs');
   // plain setup tasks are confirmed on the dashboard; they have no page
   assert.equal(kind('role-tools.email-signature'), null);
-  assert.equal(kind('documentation.contract'), null);
+  assert.equal(kind('policies.company-sop-policies'), null);
+  assert.equal(kind('policies.sop-internal-meeting'), null);
+  assert.equal(kind('alignment.social-media-accounts'), null);
+  assert.equal(kind('documentation.tax-id-documents'), null);
   assert.equal(kind('nonsense'), null);
   assert.equal(kind(''), null);
 });

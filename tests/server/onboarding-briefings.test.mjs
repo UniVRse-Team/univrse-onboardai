@@ -104,21 +104,21 @@ test('POST .../briefing records the first completion once; unknown and optional 
   });
 });
 
-test('every gate: complete (self and hr_verify) and the check need the briefing; HR verification does not', async () => {
+test('every gate: complete (self) and the check need the briefing; a document step needs its upload', async () => {
   await withEmployee({}, async ({ app, hr, browser, id }) => {
     const gated = async (method, path, body) => {
       const response = await browser[method](path, body);
       assert.deepEqual([response.status, response.body.code], [409, 'BRIEFING_REQUIRED'], path);
     };
     await gated('post', '/api/me/onboarding/steps/team-support.company-chat-groups/complete');
-    await gated('post', '/api/me/onboarding/steps/documentation.contract/complete');
+    // A document step is finished by an approved upload, briefed or not.
+    const document = await browser.post(
+      '/api/me/onboarding/steps/documentation.tax-id-documents/complete',
+    );
+    assert.deepEqual([document.status, document.body.code], [409, 'DOCUMENT_REQUIRED']);
     await gated('get', '/api/me/onboarding/steps/policies.employee-handbook/check');
     await gated('post', '/api/me/onboarding/steps/policies.employee-handbook/check', {
       optionId: 'h8t3',
-    });
-    await gated('get', '/api/me/onboarding/steps/policies.data-protection/check');
-    await gated('post', '/api/me/onboarding/steps/policies.data-protection/check', {
-      answer: 'I would keep it in company systems.',
     });
     // A check step's complete is still CHECK_REQUIRED; an optional step needs no briefing.
     const check = await browser.post(
@@ -134,35 +134,21 @@ test('every gate: complete (self and hr_verify) and the check need the briefing;
       'team-support.working-preferences',
     ]);
 
-    // HR verification is not gated (contract v1.5).
+    // HR's own verification of a step is not gated by the briefing.
     const verified = await hr.patch(
-      `/api/hr/employees/${id}/onboarding/steps/documentation.contract`,
+      `/api/hr/employees/${id}/onboarding/steps/documentation.tax-id-documents`,
       { status: 'done' },
     );
     assert.equal(verified.status, 200);
-    assert.deepEqual(
-      [
-        stepOf(verified.body, 'documentation.contract').status,
-        stepOf(verified.body, 'documentation.contract').briefed,
-      ],
-      ['done', false],
-    );
+    assert.equal(stepOf(verified.body, 'documentation.tax-id-documents').status, 'done');
 
     // After the briefing each one works.
-    for (const stepId of [
-      'team-support.company-chat-groups',
-      'documentation.personal-bank-details',
-      'policies.employee-handbook',
-    ])
+    for (const stepId of ['team-support.company-chat-groups', 'policies.employee-handbook'])
       assert.equal((await browser.post(briefingPath(stepId), { completion: 'read' })).status, 200);
     const done = await browser.post(
       '/api/me/onboarding/steps/team-support.company-chat-groups/complete',
     );
     assert.equal(stepOf(done.body, 'team-support.company-chat-groups').status, 'done');
-    const submitted = await browser.post(
-      '/api/me/onboarding/steps/documentation.personal-bank-details/complete',
-    );
-    assert.equal(stepOf(submitted.body, 'documentation.personal-bank-details').status, 'submitted');
     assert.equal(
       (await browser.get('/api/me/onboarding/steps/policies.employee-handbook/check')).status,
       200,
@@ -170,9 +156,9 @@ test('every gate: complete (self and hr_verify) and the check need the briefing;
   });
 });
 
-test('reopening keeps the briefing: a self step and a submission go back to todo, still briefed', async () => {
+test('reopening keeps the briefing: a self step goes back to todo, still briefed', async () => {
   await withEmployee({}, async ({ app, browser, id }) => {
-    for (const stepId of ['team-support.company-chat-groups', 'documentation.contract']) {
+    for (const stepId of ['team-support.company-chat-groups']) {
       await browser.post(briefingPath(stepId), { completion: 'listened' });
       await browser.post(`/api/me/onboarding/steps/${stepId}/complete`);
       const reopened = await browser.post(`/api/me/onboarding/steps/${stepId}/reopen`);
@@ -419,16 +405,15 @@ test('Helpful: marking a briefing or a step’s chat answer (or re-explanation) 
     // 3. A re-explanation (reexplainOf) marked Helpful also unlocks its step.
     const req2 = randomUUID();
     await browser.post('/api/chat', {
-      question: 'How do I sign my employment contract?',
+      question: 'How do I submit a copy of my IC?',
       taskId: 'quiz-part-1',
       conversationId: chat.id,
       requestId: req2,
-      quickQuestionId: 'step:documentation.contract',
+      quickQuestionId: 'step:documentation.tax-id-documents',
     });
     const req3 = randomUUID();
     await browser.post('/api/chat', {
-      question:
-        'Please keep the answer brief for this question: How do I sign my employment contract?',
+      question: 'Please keep the answer brief for this question: How do I submit a copy of my IC?',
       taskId: 'quiz-part-1',
       conversationId: chat.id,
       requestId: req3,
@@ -438,10 +423,10 @@ test('Helpful: marking a briefing or a step’s chat answer (or re-explanation) 
       messageId: `${req3}-a`,
       rating: 'helpful',
     });
+    // Marking it helpful records the briefing; a document step still needs its upload.
     const submitted = await browser.post(
-      '/api/me/onboarding/steps/documentation.contract/complete',
+      '/api/me/onboarding/steps/documentation.tax-id-documents/complete',
     );
-    assert.equal(submitted.status, 200);
-    assert.equal(stepOf(submitted.body, 'documentation.contract').status, 'submitted');
+    assert.deepEqual([submitted.status, submitted.body.code], [409, 'DOCUMENT_REQUIRED']);
   });
 });

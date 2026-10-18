@@ -112,3 +112,61 @@
     margin-inline: 16px;
   }
 }
+
+/* Per-document state: colour is never the only signal (text and a mark say it too). */
+.fp-document-state {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #738c9e;
+  font-size: 0.85rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.fp-document-approved {
+  border-color: #2e9e6b;
+  color: #7fd6ac;
+}
+.fp-document-rejected {
+  border-color: #d9705c;
+  color: #f0a799;
+}
+.fp-document-review {
+  border-color: #d9a441;
+  color: #ecc77e;
+}
+.fp-document-next,
+.fp-document-reviewed {
+  margin: 6px 0 0;
+}
+.fp-document-reviewed {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.fp-doc-complete,
+.fp-doc-next-task {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #738c9e;
+}
+.fp-doc-complete {
+  border-color: #2e9e6b;
+}
+.fp-document-submitted {
+  border-color: #2e9e6b;
+  color: #7fd6ac;
+}
+.fp-document-pending {
+  border-color: #738c9e;
+}
+
+/* The Documentation task to do now stands out; the others wait for it. */
+.fp-step.is-current {
+  border-left: 3px solid #7fd6ac;
+  padding-left: 12px;
+}
+.fp-document-progress {
+  border-color: #d9a441;
+  color: #ecc77e;
+}

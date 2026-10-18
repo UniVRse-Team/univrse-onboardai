@@ -39,7 +39,7 @@ test('preview rejects nonlocal, forwarded and cross-origin requests', () => {
 test('preview opens employee and HR APIs without cookies using isolated accounts', async () => {
   const preview = await startLocalPreview({ env: { NODE_ENV: 'development' }, port: 0 });
   try {
-    const get = (path, page = '/dashboard') =>
+    const get = (path, page = '/onboarding') =>
       fetch(preview.url + path, { headers: { referer: preview.url + page } });
     const employee = await (await get('/api/auth/session')).json();
     assert.equal(employee.account.role, 'employee');
@@ -49,7 +49,7 @@ test('preview opens employee and HR APIs without cookies using isolated accounts
     assert.notEqual(hr.account.id, employee.account.id);
     assert.equal((await get('/api/hr/employees', '/hr')).status, 200);
     assert.equal((await get('/api/hr/employees')).status, 403);
-    const page = await (await get('/dashboard')).text();
+    const page = await (await get('/onboarding')).text();
     assert.match(page, /Local preview · sample data/);
     assert.equal(
       (
@@ -62,4 +62,48 @@ test('preview opens employee and HR APIs without cookies using isolated accounts
   } finally {
     await preview.close();
   }
+});
+
+test('the network opt-in admits private-network devices only, and only when asked for', async () => {
+  const { localPreviewRequest, privatePeer } =
+    await import('../../scripts/local-preview-guard.mjs');
+  const request = (remoteAddress, host = 'localhost:3001', headers = {}) => ({
+    socket: { remoteAddress },
+    headers: { host, ...headers },
+  });
+  const before = process.env.PREVIEW_LAN;
+  try {
+    delete process.env.PREVIEW_LAN;
+    // Without the opt-in only this computer is served.
+    assert.equal(localPreviewRequest(request('127.0.0.1')), true);
+    assert.equal(localPreviewRequest(request('192.168.1.50')), false);
+    process.env.PREVIEW_LAN = '1';
+    assert.equal(localPreviewRequest(request('192.168.1.50')), true);
+    assert.equal(localPreviewRequest(request('::ffff:10.0.0.7')), true);
+    // Public addresses, proxies and other host names are still refused.
+    assert.equal(localPreviewRequest(request('203.0.113.9')), false);
+    assert.equal(
+      localPreviewRequest(
+        request('192.168.1.50', 'localhost:3001', { 'x-forwarded-for': '1.1.1.1' }),
+      ),
+      false,
+    );
+    assert.equal(localPreviewRequest(request('192.168.1.50', 'example.com')), false);
+    assert.equal(localPreviewRequest(request('192.168.1.50', '203.0.113.9:3001')), false);
+  } finally {
+    if (before === undefined) delete process.env.PREVIEW_LAN;
+    else process.env.PREVIEW_LAN = before;
+  }
+  assert.deepEqual(['10.1.2.3', '172.16.0.1', '172.31.255.1', '192.168.0.9'].map(privatePeer), [
+    true,
+    true,
+    true,
+    true,
+  ]);
+  assert.deepEqual(['172.32.0.1', '8.8.8.8', '', undefined].map(privatePeer), [
+    false,
+    false,
+    false,
+    false,
+  ]);
 });

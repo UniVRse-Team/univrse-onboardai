@@ -30,8 +30,8 @@ import { stepAskHandoff } from '../../src/access/support-flow.mjs';
 
 // A required step from GET /api/me/onboarding (contract v1.5).
 const step = (overrides = {}) => ({
-  id: 'documentation.contract',
-  title: 'Sign your employment contract',
+  id: 'documentation.tax-id-documents',
+  title: 'Pass over a copy of your IC (front and back)',
   description: '',
   required: true,
   completion: 'hr_verify',
@@ -167,7 +167,7 @@ test('stopping, interrupting or leaving the page records nothing', async () => {
 
 test('the briefing entry presents and speaks the whole briefing text, nothing else', () => {
   const message = briefingMessage(step());
-  assert.equal(briefingTitle(step()), 'Briefing: Sign your employment contract');
+  assert.equal(briefingTitle(step()), 'Briefing: Pass over a copy of your IC (front and back)');
   assert.equal(message.briefing, true);
   assert.equal(message.reply, step().briefing.text, 'the full text, not a short reply');
   const speech = answerSpeech(message);
@@ -217,7 +217,7 @@ test('after the briefing, Alya’s page offers the step’s own action (#66)', (
     kind: 'complete',
     label: 'Mark as submitted',
     note: 'HR will verify it.',
-    done: '“Sign your employment contract” is marked as submitted. HR will verify it.',
+    done: '“Pass over a copy of your IC (front and back)” is marked as submitted. HR will verify it.',
   });
   // A check step's question is answered on Alya's page, not on the dashboard.
   assert.deepEqual(briefingAction(step({ completion: 'check', title: 'Data protection' })), {
@@ -262,7 +262,7 @@ test('the dashboard offers Ask Alya first; the completing action only once brief
   const optional = step({ required: false, briefing: null, briefingRequired: false });
   assert.deepEqual(stepActions(optional), ['submit', 'ask']);
   assert.deepEqual(stepAskHandoff(optional), {
-    id: 'step:documentation.contract',
+    id: 'step:documentation.tax-id-documents',
     question: 'How do I sign my contract?',
   });
   assert.deepEqual(stepActions({ id: 'x', completion: 'self', status: 'todo', askAlya: null }), [
@@ -292,8 +292,8 @@ test('the briefing is read from the onboarding payload by step id', () => {
     areas: [{ id: 'documentation', steps: [step(), step({ id: 'b', briefing: null })] }],
   };
   assert.equal(
-    findBriefing(onboarding, 'documentation.contract').step.id,
-    'documentation.contract',
+    findBriefing(onboarding, 'documentation.tax-id-documents').step.id,
+    'documentation.tax-id-documents',
   );
   assert.match(findBriefing(onboarding, 'b').missing, /no briefing/);
   assert.match(findBriefing(onboarding, 'gone').missing, /no longer in your plan/);
@@ -326,7 +326,7 @@ test('#66 QA: the action card takes focus when it appears, also for a step brief
 });
 
 test('#66 QA: Back to your dashboard is a link; only a plain left click stays in the app', () => {
-  assert.equal(dashboardPath, '/dashboard');
+  assert.equal(dashboardPath, '/onboarding');
   assert.equal(opensInPage({ button: 0 }), true);
   assert.equal(opensInPage({}), true);
   assert.equal(opensInPage({ button: 1 }), false);

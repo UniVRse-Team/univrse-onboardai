@@ -4,7 +4,7 @@ import { createStorageCall } from './firestore-client.mjs';
 import { asProfileStorageError } from './employee-profiles.mjs';
 import { journeyCollections } from './onboarding-collections.mjs';
 import { alyaAssessmentReply, parseChatAiAssessment } from './ai-proficiency.mjs';
-import { findStep } from './onboarding-progress.mjs';
+import { findStep, needsDocument } from './onboarding-progress.mjs';
 
 // Proposed checklist changes (#51). When an employee tells Alya they finished
 // an onboarding activity, the checklist agent proposes marking one step (ADK
@@ -46,7 +46,9 @@ export const agentActionErrors = {
 
 // What marking a step means (onboarding-progress.mjs rules): self and optional
 // steps become done, hr_verify steps submitted, check steps never.
-export function newStatusOf(step) {
+export function newStatusOf(step, areaId = null) {
+  // A document step is finished by uploading the document, never by chat.
+  if (areaId && needsDocument(areaId, step)) return null;
   if (step.required === false || step.completion === 'self') return 'done';
   if (step.completion === 'hr_verify') return 'submitted';
   return null;
@@ -206,7 +208,8 @@ export function createAgentActions({
     }
     const template = await journey.template(track);
     const found = findStep(template, outcome.confirmation.stepId);
-    const newStatus = found ? newStatusOf(found.step) : null;
+    const newStatus = found ? newStatusOf(found.step, found.area.id) : null;
+    const documentStep = Boolean(found) && needsDocument(found.area.id, found.step);
     // A step that still needs its briefing is never proposed, even when the
     // agent asks (the agent itself refuses such steps; this is the backstop).
     const unbriefed = Boolean(newStatus) && (await journey.briefingNeeded(account, found.step.id));
@@ -229,8 +232,10 @@ export function createAgentActions({
       return {
         answer: unbriefed
           ? briefingFirstText(found.step.title)
-          : reply?.text ||
-            'That step is completed on your onboarding dashboard, for example with its scenario check.',
+          : documentStep
+            ? `Please upload your document for “${found.step.title}” under Documentation on your dashboard. It counts as submitted once it is saved there; telling me is not enough.`
+            : reply?.text ||
+              'That step is completed on your onboarding dashboard, for example with its scenario check.',
         proposedAction: null,
       };
     }

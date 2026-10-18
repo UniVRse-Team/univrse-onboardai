@@ -180,6 +180,9 @@ export function progressEntry(progress, stepId) {
 }
 export const statusOf = (progress, stepId) => progressEntry(progress, stepId)?.status || 'todo';
 // Briefings (v1.5): every required step with a briefing needs it first.
+// Whether a step is satisfied by a reviewed document submission, not by a click.
+export const needsDocument = (areaId, step) =>
+  areaId === 'documentation' && step.completion === 'hr_verify' && step.required !== false;
 export const briefedAt = (record) =>
   typeof record?.briefedAt === 'string' && record.briefedAt ? record.briefedAt : null;
 export const briefingRequired = (step) => step.required !== false && Boolean(step.briefing);
@@ -231,6 +234,8 @@ export function buildOnboarding(template, progress) {
         completion: step.completion,
         askAlya: step.askAlya,
         hasCheck: Boolean(step.check),
+        // A documentation step is finished by saving its required document (HR review is separate).
+        requiresDocument: area.id === 'documentation' && step.completion === 'hr_verify',
         briefing: step.briefing
           ? { text: step.briefing.text, sourceTitle: step.briefing.sourceTitle ?? null }
           : null,
@@ -334,6 +339,32 @@ export function addDays(day, days) {
 //   2. general chips from config: personal ones up to the day after the start
 //      date (or when there is no start date), knowledge ones after that;
 //   3. filled up to 3 from the other kind.
+// The chips for one task: its own question first, then related ones (at most `limit`).
+export function taskChips({ template, stepId, questions = [], limit = 3 }) {
+  const found = findStep(template, stepId);
+  if (!found) return null;
+  const { step } = found;
+  const out = [];
+  if (step.askAlya)
+    out.push({
+      id: `step:${step.id}`,
+      label: step.askAlya,
+      question: step.askAlya,
+      kind: 'knowledge',
+      stepId: step.id,
+    });
+  questions.forEach((question, index) =>
+    out.push({
+      id: `step:${step.id}#${index + 1}`,
+      label: question,
+      question,
+      kind: 'knowledge',
+      stepId: step.id,
+    }),
+  );
+  return out.slice(0, limit);
+}
+
 export function selectChips({ onboarding, chips, startDate, today, limit = 3 }) {
   const out = [];
   const next = onboarding.nextStep;

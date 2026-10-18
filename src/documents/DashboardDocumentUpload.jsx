@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { submissionsApi } from './submissions-api.mjs';
+import { ONBOARDING_CHANGED } from '../access/journey-api.mjs';
 import { Status, SubmissionDetail, dateLabel } from './SubmissionParts';
+import { documentStepState } from './document-steps.mjs';
 import { fileProblem, fileSize, fileExtension } from '../../shared/document-submissions.mjs';
 import './documents.css';
 import './dashboard-documents.css';
@@ -50,20 +52,19 @@ export function DocumentSectionNotice({ documents }) {
       <p>
         {documents.loading
           ? 'Loading document submissions…'
-          : documents.temporary
-            ? 'Local preview: sample documents and uploads are temporary and reset when the preview server restarts. Use sample files only.'
-            : documents.available
-              ? 'Upload supporting documents below. HR document reviews are separate from your onboarding checklist verification.'
-              : 'Uploads are unavailable until private document storage is configured.'}
+          : documents.available
+            ? 'Complete the tasks below one at a time. A task is complete once your document is saved.'
+            : 'Uploads are unavailable until private document storage is configured.'}
       </p>
       {documents.error && <p role="alert">{documents.error}</p>}
-      <button type="button" className="fp-action" onClick={documents.refresh}>
-        Refresh document status
-      </button>
+      {documents.error && (
+        <button type="button" className="fp-action" onClick={documents.refresh}>
+          Try again
+        </button>
+      )}
       {!!earlier.length && (
         <details>
-          <summary>Earlier submissions ({earlier.length})</summary>
-          <p>These documents were submitted before dashboard step linking.</p>
+          <summary>Other documents you saved ({earlier.length})</summary>
           {earlier.map((item) => (
             <button
               type="button"
@@ -71,7 +72,7 @@ export function DocumentSectionNotice({ documents }) {
               key={item.id}
               onClick={() => setDetail(item)}
             >
-              {item.title} · {item.status}
+              {item.title}
             </button>
           ))}
         </details>
@@ -81,11 +82,18 @@ export function DocumentSectionNotice({ documents }) {
   );
 }
 
-export default function DashboardDocumentUpload({ step, documents }) {
+export default function DashboardDocumentUpload({
+  step,
+  documents,
+  isNext = false,
+  locked = false,
+  onSaved,
+}) {
   const records = documents.submissions.filter((item) => item.stepId === step.id);
-  const latest = records[0];
   const [editing, setEditing] = useState(false);
   const [file, setFile] = useState(null);
+  const state = documentStepState(step, documents.submissions, editing || Boolean(file));
+  const latest = state.latest;
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -112,14 +120,17 @@ export default function DashboardDocumentUpload({ step, documents }) {
             step.id === 'documentation.tax-id-documents'
               ? 'Identification Document'
               : 'Employment Documents',
-          resubmissionOf: latest?.status === 'Rejected' ? latest.id : undefined,
         },
         file,
       );
       setFile(null);
       setEditing(false);
-      setMessage('Document submitted. Pending HR review.');
+      setMessage('Saved. This task is completed.');
       await documents.refresh();
+      // The area's progress bar comes from the saved onboarding record: reload it too.
+      await onSaved?.();
+      // Alya's checklist reads the same saved progress.
+      window.dispatchEvent(new Event(ONBOARDING_CHANGED));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -139,38 +150,45 @@ export default function DashboardDocumentUpload({ step, documents }) {
               </span>
             </>
           ) : (
-            <span>No document submitted yet</span>
+            <span>No document saved yet</span>
           )}
         </div>
-        {latest && <Status status={latest.status} />}
+        <span className={'fp-document-state fp-document-' + state.key}>
+          {state.done ? '✓ ' : ''}
+          {state.label}
+        </span>
         {latest && (
           <button type="button" className="fp-action" onClick={() => setDetail(latest)}>
             View document
           </button>
         )}
-        {!editing && (
+        {!editing && !state.done && (
           <button
             type="button"
             className="fp-action main"
-            disabled={documents.loading || !documents.available}
+            disabled={documents.loading || !documents.available || locked}
             onClick={() => {
               setEditing(true);
               setMessage('');
             }}
           >
-            {latest?.status === 'Rejected'
-              ? 'Upload corrected document'
-              : latest
-                ? 'Upload another file'
-                : 'Upload document'}
+            {state.action}
           </button>
         )}
       </div>
-      {latest?.remarks && (
-        <p className="fp-document-remarks">
-          <strong>HR remarks:</strong> {latest.remarks}
-        </p>
-      )}
+      <p className="fp-document-next">
+        {documents.loading
+          ? 'Loading your progress…'
+          : state.done
+            ? 'This task is completed.'
+            : locked
+              ? 'Finish the previous task first.'
+              : !documents.available
+                ? 'Uploads are unavailable until private document storage is configured.'
+                : isNext
+                  ? 'Do this next: upload this document.'
+                  : 'Upload this document to complete the task.'}
+      </p>
       {editing && (
         <form onSubmit={submit} aria-label={'Upload for ' + step.title}>
           <div
@@ -227,11 +245,7 @@ export default function DashboardDocumentUpload({ step, documents }) {
           </div>
           <div className="fp-document-buttons">
             <button className="fp-action main" disabled={!file || busy}>
-              {busy
-                ? 'Uploading…'
-                : latest?.status === 'Rejected'
-                  ? 'Resubmit to HR'
-                  : 'Submit to HR'}
+              {busy ? 'Uploading…' : 'Save and complete task'}
             </button>
             <button
               type="button"
@@ -254,28 +268,7 @@ export default function DashboardDocumentUpload({ step, documents }) {
         </p>
       )}
       {message && <p role="status">{message}</p>}
-      {records.length > 1 && (
-        <details className="fp-document-history">
-          <summary>Submission history ({records.length})</summary>
-          {records.map((item) => (
-            <button
-              type="button"
-              className="fp-action"
-              key={item.id}
-              onClick={() => setDetail(item)}
-            >
-              {item.fileName} · {dateLabel(item.submittedAt)} · {item.status}
-            </button>
-          ))}
-        </details>
-      )}
-      {detail && (
-        <SubmissionDetail
-          item={detail}
-          onClose={() => setDetail(null)}
-          onResubmit={detail.id === latest?.id ? () => setEditing(true) : undefined}
-        />
-      )}
+      {detail && <SubmissionDetail item={detail} onClose={() => setDetail(null)} plain />}
     </div>
   );
 }

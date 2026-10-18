@@ -1,0 +1,270 @@
+/* Phones in portrait: the screen is split in two. Alya and her visuals take the smaller upper part,
+   the chat the larger lower part. Only the message history scrolls; the composer stays at the bottom. */
+@media (max-width: 680px) and (orientation: portrait) {
+  .uv-assistant-workspace {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .uv-assistant-workspace > .uv-main {
+    flex: 1 1 0;
+    min-height: 0;
+    padding-top: 6px;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+  .alya-live-page {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+  .alya-live-page .alya-live-shell {
+    flex: 1 1 0;
+    min-height: 0;
+    /* Alya about 40% of the height, the chat about 60%; the checklist is one slim row. */
+    grid-template-rows: minmax(0, 4fr) auto minmax(0, 6fr);
+    gap: 6px;
+  }
+  .alya-live-page .alya-presentation-stage {
+    min-height: 0;
+    border-radius: 12px;
+  }
+  .alya-live-page .alya-answer-space {
+    height: auto;
+    min-height: 0;
+  }
+  .alya-live-page .alya-view-panels,
+  .alya-live-page .alya-chat-panel {
+    min-height: 0;
+  }
+  .alya-live-page .alya-chat-panel {
+    display: flex;
+    flex-direction: column;
+  }
+  /* The history scrolls on its own, inside the lower half. */
+  .alya-live-page .alya-chat-log,
+  .alya-live-page .alya-memory-bar ~ .alya-chat-log {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 10px 12px;
+  }
+  .alya-live-page .alya-chat-heading {
+    flex-shrink: 0;
+    min-height: 36px;
+    padding: 4px 12px;
+  }
+  .alya-live-page .alya-chat-heading h2 {
+    font-size: 14px;
+  }
+  .alya-live-page .alya-composer-area {
+    flex-shrink: 0;
+    padding: 6px 10px max(6px, env(safe-area-inset-bottom));
+  }
+  .alya-live-page .alya-composer textarea {
+    min-height: 40px;
+    height: 40px;
+  }
+  /* A tighter stage: Alya fills the space, with less chrome around her. */
+  .alya-live-page .ap-stage-heading {
+    padding: 8px 12px;
+  }
+  .alya-live-page .ap-stage-heading h1 {
+    font-size: 18px;
+    margin-top: 2px;
+  }
+  .alya-live-page .ap-presenter {
+    bottom: 22px;
+    width: 62%;
+  }
+  .alya-live-page .ap-welcome {
+    top: 24%;
+    width: 36%;
+  }
+  .alya-live-page .ap-welcome h2 {
+    font-size: 17px;
+  }
+  .alya-live-page .ap-welcome p {
+    margin-top: 8px;
+    font-size: 10px;
+    line-height: 1.5;
+  }
+  .alya-live-page .ap-presenter .alya-avatar-name strong {
+    font-size: 18px;
+  }
+  .alya-live-page .ap-presenter .alya-stage-bottom {
+    padding: 24px 9px 10px;
+  }
+  .alya-live-page .ap-stage-caption {
+    height: 20px;
+  }
+}
+/* Very short phone screens keep the whole page scrollable so nothing is clipped. */
+@media (max-width: 680px) and (orientation: portrait) and (max-height: 520px) {
+  .uv-assistant-workspace {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .uv-assistant-workspace > .uv-main {
+    min-height: 560px;
+  }
+}
+@media (max-width: 680px) and (orientation: portrait) {
+  .alya-live-page .obc-collapsible {
+    padding: 2px 12px;
+    border-radius: 10px;
+  }
+  .alya-live-page .obc-collapsible summary {
+    min-height: 34px;
+    font-size: 13px;
+  }
+  .alya-live-page .obc-collapsible[open] {
+    max-height: 42dvh;
+    overflow-y: auto;
+  }
+}
+
+/* Phone portrait: Alya on the left, the scene (title and steps) on the right, the caption below. */
+@media (max-width: 680px) and (orientation: portrait) {
+  .alya-live-page .ap-stage-heading {
+    padding: 5px 8px;
+    justify-content: flex-end;
+  }
+  .alya-live-page .ap-stage-heading > div:first-child {
+    display: none;
+  }
+  .alya-live-page .ap-answer-picker {
+    max-width: 52%;
+  }
+  .alya-live-page .ap-answer-picker select {
+    min-height: 26px;
+    font-size: 10px;
+  }
+  .alya-live-page .automatic-presentation {
+    inset: 32px 0 22px;
+  }
+  .alya-live-page .automatic-eyebrow,
+  .alya-live-page .automatic-cue-rule {
+    display: none;
+  }
+  .alya-live-page .automatic-scene-title {
+    left: 47%;
+    right: 3%;
+  }
+  .alya-live-page .automatic-scene-title h2 {
+    font-size: 16px;
+    margin-top: 0;
+  }
+  .alya-live-page .automatic-cue,
+  .alya-live-page .automatic-cue.from-right {
+    top: 34px;
+    width: 25%;
+  }
+  .alya-live-page .automatic-cue.from-left {
+    left: 47%;
+  }
+  .alya-live-page .automatic-cue.from-right {
+    left: 73%;
+    right: auto;
+  }
+  .alya-live-page .automatic-art {
+    height: 50px;
+  }
+  .alya-live-page .automatic-cue figcaption {
+    font-size: 10px;
+    line-height: 1.2;
+    margin-top: 0;
+  }
+  .alya-live-page .scene-presentation.automatic-stage .ap-presenter {
+    top: 24px;
+    bottom: 50px;
+    left: 0;
+    width: 46%;
+  }
+  .alya-live-page .automatic-caption,
+  .alya-live-page .automatic-presentation.is-stepping .automatic-caption {
+    bottom: 26px;
+    left: 3%;
+    right: 3%;
+    height: 38px;
+    font-size: 11px;
+    line-height: 1.3;
+    overflow: hidden;
+  }
+  .alya-live-page .automatic-steps {
+    bottom: 1px;
+    gap: 6px;
+  }
+  .alya-live-page .automatic-steps button {
+    min-height: 22px;
+    padding: 2px 8px;
+    font-size: 11px;
+  }
+  .alya-live-page .alya-voice-error {
+    padding: 3px 12px;
+    font-size: 10px;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .alya-live-page .alya-memory-bar {
+    min-height: 28px;
+  }
+  .alya-live-page .alya-chips button {
+    min-height: 32px;
+  }
+  .alya-live-page .alya-voice-toolbar {
+    min-height: 22px;
+    margin-top: 0;
+  }
+}
+/* Short phones: a little less stage. Alya takes the left, the title and caption sit on the right
+   (the side pictures give way), and the voice banner gives way to the messages. */
+@media (max-width: 680px) and (orientation: portrait) and (max-height: 720px) {
+  .alya-live-page .alya-live-shell {
+    grid-template-rows: minmax(0, 7fr) auto minmax(0, 13fr);
+  }
+  .alya-live-page .alya-voice-error {
+    display: none;
+  }
+  .alya-live-page .automatic-cue {
+    display: none;
+  }
+  .alya-live-page .automatic-scene-title h2 {
+    font-size: 14px;
+  }
+  .alya-live-page .scene-presentation.automatic-stage .ap-presenter {
+    top: 18px;
+    bottom: 24px;
+  }
+  .alya-live-page .automatic-caption,
+  .alya-live-page .automatic-presentation.is-stepping .automatic-caption {
+    top: 34px;
+    bottom: auto;
+    left: 47%;
+    right: 3%;
+    height: 58px;
+    font-size: 10px;
+  }
+  .alya-live-page .automatic-steps {
+    left: 3%;
+    right: auto;
+    justify-content: flex-start;
+  }
+}
+/* The narrowest phones: smaller type so the checklist row and the message box do not wrap. */
+@media (max-width: 340px) and (orientation: portrait) {
+  .alya-live-page .obc-collapsible summary {
+    font-size: 11px;
+    gap: 4px;
+  }
+  .alya-live-page .obc-collapsible summary strong {
+    white-space: nowrap;
+  }
+  .alya-live-page .alya-composer textarea {
+    font-size: 12px;
+  }
+}

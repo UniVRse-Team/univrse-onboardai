@@ -10,10 +10,10 @@ import {
   publicVerificationContent,
 } from '../../server/task-verification.mjs';
 import { buildVerificationContent } from '../../server/verification-content.mjs';
-import { builtInTemplate } from '../../server/onboarding-content.mjs';
+import { templateWithAdditionalPolicies } from '../server/template-fixtures.mjs';
 import { accessState, verificationGuide } from '../../src/portal/learning-area-model.mjs';
 
-const steps = builtInTemplate('employee').areas.flatMap((area) =>
+const steps = templateWithAdditionalPolicies('employee').areas.flatMap((area) =>
   area.steps.map((step) => ({ ...step, areaId: area.id })),
 );
 const stepById = Object.fromEntries(steps.map((step) => [step.id, step]));
@@ -70,6 +70,11 @@ test('each task states how it is verified, and optional tasks never look require
   assert.equal(kind('role-tools.gsheet-account'), 'access');
   assert.equal(kind('role-tools.ai-readiness-training'), 'assessment');
   assert.equal(kind('role-tools.email-signature'), 'self');
+  // Read-and-confirm steps have no quiz: the employee confirms them.
+  assert.equal(kind('policies.company-sop-policies'), 'self');
+  assert.equal(kind('policies.sop-internal-meeting'), 'self');
+  assert.equal(kind('alignment.social-media-accounts'), 'self');
+  assert.equal(kind('policies.employee-handbook'), 'policy');
   assert.equal(kind('team-support.working-preferences'), 'optional');
   assert.equal(
     verificationGuide(stepById['team-support.working-preferences'], 'team-support').mandatory,
@@ -122,8 +127,14 @@ test('each task gets one appropriate primary button', async () => {
   });
   const label = (s, area, ctx) => primaryAction(s, area, { accessStepIds: access, ...ctx })?.label;
   const policy = step('policies.data-protection', { completion: 'check' });
-  assert.equal(label(policy, 'policies', { hasQuiz: true }), 'Read & Confirm Acknowledgement');
-  assert.equal(label(policy, 'policies', { hasQuiz: true, acknowledged: true }), 'Start Quiz');
+  // A policy with a quiz is tested by the quiz; the handbook is a separate link.
+  assert.equal(label(policy, 'policies', { hasQuiz: true }), 'Start Quiz');
+  const next = (quiz) => label(policy, 'policies', { hasQuiz: true, quiz });
+  assert.equal(next('in-progress'), 'Continue Quiz');
+  assert.equal(next('failed'), 'Retry Quiz');
+  assert.equal(next('not-started'), 'Start Quiz');
+  // A policy without an approved quiz is acknowledged.
+  assert.equal(label(policy, 'policies', { hasQuiz: false }), 'Read and Confirm Acknowledgement');
   assert.equal(label({ ...policy, status: 'done' }, 'policies', { hasQuiz: true }), 'Review');
   assert.equal(label(step('alignment.products-customers'), 'alignment'), 'Start Activity');
   assert.equal(label(step('alignment.mission-values'), 'alignment'), 'Start Quiz');
@@ -138,7 +149,10 @@ test('each task gets one appropriate primary button', async () => {
     }),
     undefined,
   );
-  assert.equal(label(step('role-tools.ai-readiness-training'), 'role-tools'), 'Start Assessment');
+  assert.equal(
+    label(step('role-tools.ai-readiness-training'), 'role-tools'),
+    'Start Self-Assessment',
+  );
   assert.equal(label(step('role-tools.email-signature'), 'role-tools'), 'Confirm Setup');
   assert.equal(
     label(step('role-tools.gsheet-training-sop', { completion: 'check' }), 'role-tools'),

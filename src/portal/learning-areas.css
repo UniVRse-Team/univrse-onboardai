@@ -523,3 +523,68 @@
   gap: 8px;
   margin: 10px 0;
 }
+
+/* The stages of a task: acknowledgement, then quiz. */
+.learning-stages {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.learning-stages li {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid #738c9e66;
+  border-radius: 8px;
+}
+.learning-stages li > span {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #6b8296;
+  font-size: 12px;
+}
+.learning-stages li.done > span {
+  background: #2e9e6b;
+  border-color: #2e9e6b;
+  color: #fff;
+}
+.learning-stages small {
+  color: #4a6074;
+}
+
+/* AI experience: a slider from 0 (not sure / skip) to 10. */
+.ai-slider-field {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+.learning-task input.ai-slider,
+input.ai-slider {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  accent-color: #256a91;
+  cursor: pointer;
+}
+.ai-slider-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ai-slider-scale .is-selected {
+  color: #256a91;
+  font-weight: 700;
+}
+.ai-slider-text {
+  margin: 0;
+  font-weight: 600;
+}

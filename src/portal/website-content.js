@@ -1,6 +1,5 @@
 // Editable portal content. Activities are suggestions, not HR assignments.
 export const navigation = [
-  { path: '/dashboard', label: 'Dashboard', short: 'Home', icon: 'home' },
   { path: '/onboarding', label: 'My onboarding', short: 'Journey', icon: 'checklist' },
   { path: '/support', label: 'People & support', short: 'People', icon: 'people' },
   { path: '/alya', label: 'Ask Alya', short: 'Alya', icon: 'spark' },
