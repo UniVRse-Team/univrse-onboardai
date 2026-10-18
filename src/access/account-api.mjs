@@ -107,28 +107,11 @@ export async function accountRequest(
 
 const enc = encodeURIComponent;
 export const accountApi = {
-  session: (options) => {
-    const scope =
-      options?.scope ||
-      (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')
-        ? 'admin'
-        : undefined);
-    const path = scope ? `/api/auth/session?scope=${scope}` : '/api/auth/session';
-    const headers = scope ? { ...options?.headers, 'X-Session-Scope': scope } : options?.headers;
-    return accountRequest(path, { ...options, headers });
-  },
+  config: (options) => accountRequest('/api/config', options),
+  session: (options) => accountRequest('/api/auth/session', options),
   signIn: (username, password) =>
     accountRequest('/api/auth/sign-in', { method: 'POST', body: { username, password } }),
-  signOut: (options) => {
-    const scope =
-      options?.scope ||
-      (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')
-        ? 'admin'
-        : undefined);
-    const path = scope ? `/api/auth/sign-out?scope=${scope}` : '/api/auth/sign-out';
-    const headers = scope ? { ...options?.headers, 'X-Session-Scope': scope } : options?.headers;
-    return accountRequest(path, { method: 'POST', ...options, headers });
-  },
+  signOut: () => accountRequest('/api/auth/sign-out', { method: 'POST' }),
   changePassword: (currentPassword, newPassword) =>
     accountRequest('/api/auth/password', {
       method: 'POST',
