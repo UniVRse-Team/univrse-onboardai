@@ -53,10 +53,14 @@ function Mark({ done, started }) {
 
 // Compact checklist of the four learning areas beside Alya. Each task opens
 // the matching task in the onboarding section, where it is completed.
-export default function OnboardingChecklist({ checklist, navigate, collapsible = false }) {
+// variant: 'panel' (beside Alya), 'collapsible' (stacked layouts) or 'dock'
+// (a pill on the stage while Alya presents an answer, so the list never leaves).
+export default function OnboardingChecklist({ checklist, navigate, variant = 'panel' }) {
   const { model, failed, reload } = checklist;
-  const firstOpen = model?.groups.find((group) => group.done < group.total)?.id;
+  const currentGroup = model?.groups.find((group) => group.tasks.some((task) => task.current))?.id;
+  const firstOpen = currentGroup ?? model?.groups.find((group) => group.done < group.total)?.id;
   const [open, setOpen] = useState(null);
+  const [dockOpen, setDockOpen] = useState(false);
   const current = open ?? firstOpen;
 
   function go(taskId) {
@@ -100,6 +104,24 @@ export default function OnboardingChecklist({ checklist, navigate, collapsible =
       >
         <span style={{ width: model.percent + '%' }} />
       </div>
+      {model.complete ? (
+        <p className="obc-banner obc-complete" role="status">
+          <strong>Onboarding complete.</strong> Every required task is finished and saved.
+          {model.waiting > 0 && ' Some items still await confirmation.'}
+        </p>
+      ) : model.current ? (
+        <p className="obc-banner" role="status">
+          <small>Up next</small>
+          <button type="button" className="obc-link" onClick={() => go(model.current.id)}>
+            {model.current.title}
+          </button>
+        </p>
+      ) : model.waiting > 0 ? (
+        <p className="obc-banner" role="status">
+          Everything you can do is done. {model.waiting} task{model.waiting === 1 ? '' : 's'}{' '}
+          awaiting confirmation from your coordinator or HR.
+        </p>
+      ) : null}
       <div className="obc-groups">
         {model.groups.map((group) => {
           const expanded = current === group.id;
@@ -122,13 +144,18 @@ export default function OnboardingChecklist({ checklist, navigate, collapsible =
                 <ul id={'obc-' + group.id} className="obc-tasks">
                   {group.tasks.map((task) => (
                     <li key={task.id}>
-                      <button type="button" className="obc-task" onClick={() => go(task.id)}>
+                      <button
+                        type="button"
+                        className={'obc-task' + (task.current ? ' is-current' : '')}
+                        aria-current={task.current ? 'step' : undefined}
+                        onClick={() => go(task.id)}
+                      >
                         <Mark done={task.done} started={task.started} />
                         <span>
                           {task.title}
                           {!task.required && <small> · Optional</small>}
                         </span>
-                        <span className="obc-state">{task.state}</span>
+                        <span className="obc-state">{task.current ? 'Up next' : task.state}</span>
                       </button>
                     </li>
                   ))}
@@ -141,7 +168,38 @@ export default function OnboardingChecklist({ checklist, navigate, collapsible =
     </>
   );
 
-  return collapsible ? (
+  if (variant === 'dock')
+    return (
+      <div className="obc-dock">
+        {dockOpen && (
+          <aside
+            className="obc obc-dock-panel"
+            id="obc-dock-panel"
+            aria-label="Your onboarding checklist"
+          >
+            <h3>Your onboarding checklist</h3>
+            {body}
+          </aside>
+        )}
+        <button
+          type="button"
+          className="obc-dock-toggle"
+          aria-expanded={dockOpen}
+          aria-controls="obc-dock-panel"
+          onClick={() => setDockOpen(!dockOpen)}
+        >
+          <strong>Checklist</strong>
+          <span>
+            {model
+              ? `${model.done} of ${model.total} completed`
+              : failed
+                ? 'Unavailable'
+                : 'Loading…'}
+          </span>
+        </button>
+      </div>
+    );
+  return variant === 'collapsible' ? (
     <details className="obc obc-collapsible">
       <summary>
         <strong>Your onboarding checklist</strong>

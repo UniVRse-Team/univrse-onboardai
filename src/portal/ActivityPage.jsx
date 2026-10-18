@@ -6,12 +6,18 @@ import { accountApi } from '../access/account-api.mjs';
 import {
   AiReadiness,
   HelpConfirmation,
+  PolicyDocumentButton,
   RoleResponsibilitiesChecklist,
   ToolAccessWorkflow,
   WorkingPreferences,
 } from './LearningActivities';
 import { activityStatus, resolveActivity } from './activity-model.mjs';
-import { describeLoadError, focusStepKey } from './learning-area-model.mjs';
+import {
+  describeLoadError,
+  focusStepKey,
+  policyDocumentLabel,
+  quizStage,
+} from './learning-area-model.mjs';
 import './learning-areas.css';
 import './activity-page.css';
 
@@ -53,7 +59,7 @@ export default function ActivityPage({ activityId, navigate }) {
   const activity =
     state.status === 'ready' ? resolveActivity(activityId, data.onboarding, data.content) : null;
   useEffect(() => {
-    document.title = (activity?.title || 'Activity') + ' · OnboardAi';
+    document.title = (activity?.title || 'Activity') + ' · Onboard.AI';
   }, [activity?.title]);
 
   const setRecords = (records) => setData((current) => ({ ...current, records }));
@@ -190,6 +196,9 @@ function ActivityBody({
   const [notes, setNotes] = useState(initialNotes);
   const [ackBusy, setAckBusy] = useState(false);
   const [ackError, setAckError] = useState('');
+  const [quizStarted, setQuizStarted] = useState(
+    () => activity.kind !== 'policy' || Boolean(records.sessions?.[`policies/${activity.id}`]),
+  );
   const { kind, step } = activity;
 
   if (kind === 'policy' || kind === 'quiz') {
@@ -212,7 +221,7 @@ function ActivityBody({
             HR to add it.
           </p>
         );
-      if (!policyRecord?.acknowledgedAt && !(step.status === 'done'))
+      if (!activity.policy.quiz && !policyRecord?.acknowledgedAt && step.status !== 'done')
         return (
           <section className="qr-card">
             <h2>Read the policy</h2>
@@ -225,7 +234,7 @@ function ActivityBody({
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Open {activity.policy.document.title} ↗
+                {policyDocumentLabel(step.id, activity.policy.document)}
               </a>
             ) : (
               <p className="fp-muted">
@@ -233,10 +242,7 @@ function ActivityBody({
                 above is the approved text from your onboarding plan.
               </p>
             )}
-            <p>
-              Reading is separate from the quiz: acknowledging does not complete the task
-              {activity.policy.quiz ? '. You will take the quiz next.' : '.'}
-            </p>
+            <p>Acknowledging completes this task.</p>
             {ackError && (
               <p role="alert" className="fp-inline-error">
                 {ackError}
@@ -266,7 +272,30 @@ function ActivityBody({
                   }
                 }}
               >
-                {ackBusy ? 'Saving…' : 'Confirm Acknowledgement'}
+                {ackBusy ? 'Saving…' : 'Read and Confirm Acknowledgement'}
+              </button>
+            </div>
+          </section>
+        );
+      if (activity.policy.quiz && !quizStarted && !(step.status === 'done' && !policyRecord?.quiz))
+        return (
+          <section className="qr-card">
+            <h2>{activity.policy.title}</h2>
+            <p>{step.briefing?.text}</p>
+            <p className="fp-muted">Source: {activity.policy.sourceTitle}.</p>
+            {!activity.policy.document && (
+              <p className="fp-muted">
+                The full document has not been linked yet (content requirement); the summary above
+                is the approved text from your onboarding plan.
+              </p>
+            )}
+            <div className="qr-actions">
+              <PolicyDocumentButton stepId={step.id} document={activity.policy.document} />
+              <button type="button" className="fp-action main" onClick={() => setQuizStarted(true)}>
+                {passed ? 'Practise Quiz' : record?.attempts ? 'Retry Quiz' : 'Start Quiz'}
+              </button>
+              <button type="button" className="fp-action" onClick={back}>
+                Back to onboarding
               </button>
             </div>
           </section>
@@ -292,22 +321,20 @@ function ActivityBody({
         key={activity.id}
         questions={activity.questions}
         passingScore={activity.passingScore}
-        initialAnswers={draft?.answers || {}}
-        alreadyPassed={passed && !draft}
+        session={records.sessions?.[`${area}/${key}`] || null}
+        alreadyPassed={passed && !records.sessions?.[`${area}/${key}`]}
         summary={
           record
             ? `Best score ${record.score}% after ${record.attempts} attempt${record.attempts === 1 ? '' : 's'}.`
             : null
         }
-        onDraft={(answers) =>
-          journeyApi.submitVerification(area, key, { action: 'draft', answers, notes })
+        // Each answer is checked and locked by the server, then its feedback shows.
+        onAnswer={(questionId, answer) =>
+          journeyApi.submitVerification(area, key, { action: 'answer', questionId, answer })
         }
-        onSubmit={async (answers) => {
-          const res = await journeyApi.submitVerification(
-            area,
-            key,
-            kind === 'policy' ? { action: 'quiz', answers } : { answers, notes },
-          );
+        // The server grades the locked answers; the score and pass are its result.
+        onFinish={async () => {
+          const res = await journeyApi.submitVerification(area, key, { action: 'finish', notes });
           setRecords(res.verifications);
           if (res.onboarding) setOnboarding(res.onboarding);
           return res;

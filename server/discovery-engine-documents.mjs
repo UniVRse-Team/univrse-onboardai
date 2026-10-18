@@ -22,7 +22,13 @@ export const companyDocumentIdPattern =
 // The Firestore ID an object name belongs to, when it lies in the HR
 // namespace (<uuid>/...), else null.
 export function namespaceIdOf(objectName) {
-  const name = String(objectName ?? '');
+  let name = String(objectName ?? '');
+  if (name.startsWith('companies/')) {
+    const parts = name.split('/');
+    if (parts.length >= 3) {
+      name = parts.slice(2).join('/');
+    }
+  }
   const slash = name.indexOf('/');
   if (slash < 0) return null;
   const folder = name.slice(0, slash);
@@ -32,7 +38,7 @@ export function namespaceIdOf(objectName) {
 // The object name an uploaded file is stored under. Control characters and
 // slashes become "-"; a type Vertex AI Search does not parse (.md, ...) is
 // stored as UTF-8 .txt.
-export function gcsObjectName(id, fileName) {
+export function gcsObjectName(id, fileName, companyId = null) {
   const cleaned = String(fileName || '')
     .replace(/[\u0000-\u001f\u007f/\\]+/g, '-')
     .trim();
@@ -41,11 +47,13 @@ export function gcsObjectName(id, fileName) {
   const indexedName = SUPPORTED_EXTENSIONS.includes(ext)
     ? base
     : base.replace(/\.[A-Za-z0-9]{1,8}$/, '') + '.txt';
-  return `${id}/${indexedName}`;
+  return companyId && companyId !== 'univrse'
+    ? `companies/${companyId}/${id}/${indexedName}`
+    : `${id}/${indexedName}`;
 }
 
-export const companyDocumentUri = ({ bucket, id, fileName }) =>
-  `gs://${bucket}/${gcsObjectName(id, fileName)}`;
+export const companyDocumentUri = ({ bucket, id, fileName, companyId = null }) =>
+  `gs://${bucket}/${gcsObjectName(id, fileName, companyId)}`;
 
 export const vertexDocumentId = (uri) =>
   createHash('sha256').update(String(uri), 'utf8').digest('hex').slice(0, 32);

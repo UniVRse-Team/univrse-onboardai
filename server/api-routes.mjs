@@ -26,6 +26,7 @@ import {
 import { vertexConfig, vertexGenerateContentUrl, createAccessTokenProvider } from './vertex-ai.mjs';
 import { createProfileAutofill } from './profile-autofill.mjs';
 import { ChatError, answerNotFound } from './chat-errors.mjs';
+import { progressNote } from './alya-progress-note.mjs';
 import { createOnboardingJourney, personalSource } from './onboarding-journey.mjs';
 import { alyaAssessmentReply, parseChatAiAssessment } from './ai-proficiency.mjs';
 import { createSupportRequests } from './support-requests.mjs';
@@ -47,6 +48,9 @@ import { createCompanyKnowledge, isAccountOwner } from './company-knowledge.mjs'
 import { createActiveDocuments } from './active-company-documents.mjs';
 import { guardrailFieldOf } from './answer-freshness.mjs';
 import { createFirestoreClient } from './firestore-client.mjs';
+import { DEFAULT_COMPANY_ID } from './companies.mjs';
+import { mountAdminRoutes } from './admin-routes.mjs';
+import { createCompanyProfileDigest } from './company-profile-digest.mjs';
 import {
   accountCookie,
   accountCookieOptions,
@@ -118,6 +122,9 @@ export function createApp({
   // Gemini whenever Vertex AI is configured (not with document-search); null
   // is off, and written checks then answer 503 CHECK_GRADER_UNAVAILABLE.
   checkGrader = undefined,
+  // Company profile digest service (company-profile-digest.mjs). By default it
+  // uses Vertex AI through fetchImpl and vertexToken; null turns it off.
+  profileDigest = undefined,
 } = {}) {
   const app = express();
   const documentSearch = env.AI_MODE === 'document-search';
@@ -145,7 +152,23 @@ export function createApp({
   // Company passages for gemini-chat and document-search: Vertex AI Search, or
   // the sample guide when VERTEX_SEARCH_ENGINE_ID is unset.
   const retrieve =
-    companyRetrieve || createCompanyRetriever({ env, fetchImpl, getAccessToken: vertexToken });
+    companyRetrieve ||
+    createCompanyRetriever({
+      env,
+      fetchImpl,
+      getAccessToken: vertexToken,
+      getCompanyProfile: accounts ? (c) => accounts.companyProfile(c) : null,
+    });
+  const digest =
+    profileDigest !== undefined
+      ? profileDigest
+      : accounts
+        ? createCompanyProfileDigest({
+            env,
+            fetchImpl,
+            getAccessToken: vertexToken,
+          })
+        : null;
   // With accounts on, Firestore companyDocuments is kept strictly for HR UI
   // management (`list`, `add`, `move`, `remove`, `describe`), while runtime
   // retrieval (`retrieve`, `quote`) exclusively queries Vertex AI Search.
@@ -188,23 +211,27 @@ export function createApp({
         onChange: active ? () => active.invalidate() : null,
       })
     : null;
-  // retrieve(query, options, owner): runtime retrieval for gemini-chat and
+  // retrieve(query, options, owner, scope): runtime retrieval for gemini-chat and
   // document-search always and only queries Vertex AI Search (`retrieve`) or
   // the sample guide. Vertex AI Search passages go through the allowlist;
   // without one (no company library) none is used.
   const withheld = async () => [];
-  const chatRetrieve = (query, options, owner) =>
-    knowledge && isAccountOwner(owner)
-      ? knowledge.retrieve(query, { signal: options?.signal })
+  const chatRetrieve = (query, options, owner, scope) => {
+    const companyId = scope?.companyId ?? options?.companyId;
+    return knowledge && isAccountOwner(owner)
+      ? knowledge.retrieve(query, { signal: options?.signal, companyId })
       : vertexSearch
         ? withheld()
-        : retrieve(query, options);
-  const quoteRetrieve = (query, options, owner) =>
-    knowledge && isAccountOwner(owner)
-      ? knowledge.quote(query, { signal: options?.signal })
+        : retrieve(query, { ...options, companyId });
+  };
+  const quoteRetrieve = (query, options, owner) => {
+    const companyId = options?.companyId;
+    return knowledge && isAccountOwner(owner)
+      ? knowledge.quote(query, { signal: options?.signal, companyId })
       : vertexSearch
         ? withheld()
-        : retrieve(query, options);
+        : retrieve(query, { ...options, companyId });
+  };
   let conversations = typeof conversationService === 'function' ? null : conversationService;
   const chatService = () =>
     (conversations ||=
@@ -292,6 +319,7 @@ export function createApp({
   app.disable('x-powered-by');
   // With a trusted proxy in front, req.ip and req.host are the browser's IP and host.
   app.set('trust proxy', trustProxy);
+  mountAdminRoutes(app, { env, accounts, profileDigest: digest });
   app.use(express.json({ limit: '24kb' }));
 
   app.use((req, res, next) => {
@@ -337,6 +365,22 @@ export function createApp({
     next();
   });
 
+  const documentSubmissions = journeyStore
+    ? createDocumentSubmissions({
+        firestore: journeyStore.firestore,
+        accounts,
+        onboarding: journey.onboarding,
+        files:
+          submissionFiles === undefined
+            ? createSubmissionFiles({ env, fetchImpl, getAccessToken: vertexToken })
+            : submissionFiles,
+      })
+    : null;
+  // Documentation steps follow the review of their submissions (never a click).
+  if (documentSubmissions && journey)
+    journey.onboarding.bindDocumentStatuses((accountId) =>
+      documentSubmissions.statusesFor(accountId),
+    );
   // Guest access was removed (issue #55): /api/guest-workspace/* is not
   // served, and every chat, conversation and voice route needs a signed-in
   // account.
@@ -347,17 +391,7 @@ export function createApp({
     chatMemory: () => chatService().memory,
     companyKnowledge: knowledge,
     journey,
-    submissions: journeyStore
-      ? createDocumentSubmissions({
-          firestore: journeyStore.firestore,
-          accounts,
-          onboarding: journey.onboarding,
-          files:
-            submissionFiles === undefined
-              ? createSubmissionFiles({ env, fetchImpl, getAccessToken: vertexToken })
-              : submissionFiles,
-        })
-      : null,
+    submissions: documentSubmissions,
   });
   // Both stores close asynchronously (Firestore client or SQLite file), as do
   // the account database pool and the profile and library clients.
@@ -419,6 +453,7 @@ export function createApp({
       // HR can pre-fill profile forms from a document: accounts are on and
       // GOOGLE_CLOUD_PROJECT is set (credentials are not probed).
       profileAutofill: Boolean(accounts && autofill?.available),
+      companyProfileDigest: Boolean(accounts && digest?.available),
     });
   });
 
@@ -480,6 +515,9 @@ export function createApp({
     }
     if (session.account.mustChangePassword)
       return sendAccountError(res, accountErrors.passwordChangeRequired());
+    if (session.account.role === 'admin')
+      return sendAccountError(res, accountErrors.companyAccountRequired());
+    req.accountSession = session;
     req.chatOwner = `account:${session.account.id}`;
     req.chatAccount = session.account;
     return next();
@@ -680,6 +718,10 @@ export function createApp({
     };
     res.on('close', closed);
     try {
+      const scope = {
+        companyId: req.accountSession?.account?.companyId ?? DEFAULT_COMPANY_ID,
+        companyName: req.accountSession?.account?.company?.name || 'UniVRse',
+      };
       const turn = await journeyTurn(req);
       const personal = turn.chip?.kind === 'personal';
       const aiAssessment =
@@ -747,6 +789,7 @@ export function createApp({
                 reexplainOf: turn.reexplainOf,
                 checklist: turn.checklist,
               },
+              scope,
             );
         const { supportSummary, journey: found, ...employeeAnswer } = result;
         await recordGap(req.chatAccount, question.trim(), employeeAnswer, turn, found);
@@ -772,6 +815,7 @@ export function createApp({
                     taskId,
                     signal: abort.signal,
                     owner: req.chatOwner,
+                    scope,
                   }),
                   turn,
                 ),
@@ -792,12 +836,16 @@ export function createApp({
   // document search, the labelled sample answer, or single-turn Gemini. A
   // failure is an AnswerFailure carrying the response the browser receives.
   // `owner` is the account's chat owner.
-  async function answerOnce({ question, task, style, taskId, signal, owner }) {
+  async function answerOnce({ question, task, style, taskId, signal, owner, scope }) {
     if (documentSearch) {
       const start = performance.now();
       let passages;
       try {
-        passages = await quoteRetrieve(question.trim(), signal ? { signal } : undefined, owner);
+        passages = await quoteRetrieve(
+          question.trim(),
+          { signal: signal ? signal : undefined, companyId: scope?.companyId },
+          owner,
+        );
       } catch (error) {
         // Company library failures are ChatErrors with fixed codes.
         const failure =
@@ -816,14 +864,19 @@ export function createApp({
     // Without Vertex AI configured, return a labelled sample answer.
     const vertex = vertexConfig(env);
     if (!vertex) {
-      return demoAnswer(question, task, style);
+      const ans = demoAnswer(question, task, style);
+      if (scope?.companyId && scope.companyId !== DEFAULT_COMPANY_ID) {
+        ans.answer = ans.answer.replace(/Mr\. Hezri/g, 'HR');
+      }
+      return ans;
     }
 
     const start = performance.now();
 
     // Single-turn Gemini mode answers from the sample task only. Company
     // documents are searched in gemini-chat and document-search modes.
-    const instruction = systemPrompt(task, style);
+    const companyName = scope?.companyName || 'UniVRse';
+    const instruction = systemPrompt(task, style, companyName);
     const source = task.sourceStatus;
 
     try {
@@ -932,7 +985,17 @@ export function createApp({
               signal,
             })
         : null;
-    return { quickQuestionId: chip?.id ?? null, reexplainOf, chip, checklist };
+    // Alya's view of the saved progress; a failed read leaves her without it.
+    let note = '';
+    if (journey && account?.role === 'employee' && !chip)
+      note = progressNote(await journey.onboarding.myOnboarding(account).catch(() => null));
+    return {
+      quickQuestionId: chip?.id ?? null,
+      reexplainOf,
+      chip,
+      checklist,
+      progressNote: note,
+    };
   }
   // A completion report in the modes without the Gemini plan step, answered by
   // the checklist agent: its reply, and the proposed change if any.
@@ -1002,6 +1065,7 @@ export function createApp({
         topic: found.topic,
         track: await journey.onboarding.trackFor(account),
         nearestSource: found.nearestSource,
+        companyId: account.companyId || DEFAULT_COMPANY_ID,
       });
     } catch {
       console.warn('A knowledge gap could not be recorded.');

@@ -1,0 +1,567 @@
+/* The employee pages use HR's look: a slate header, a light blue-grey ground, soft light
+   panels, white tasks and a slate hero card. Alya's page keeps its own dark theme. */
+:root {
+  --lt-ink: #1f3047;
+  --lt-ink-soft: #52677b;
+  --lt-slate: #2d4365;
+  --lt-blue: #256a91;
+  --lt-blue-deep: #1d5f84;
+  --lt-aqua: #e3f3f4;
+  --lt-aqua-deep: #cfe7ea;
+  --lt-ground: #dce6ed;
+  --lt-panel: #e8eff4;
+  --lt-card: #f7fafd;
+  --lt-line: #c8d8e2;
+}
+body:has(.uv-portal) {
+  background: var(--lt-ground);
+}
+
+.uv-portal {
+  background: var(--lt-ground);
+  color: var(--lt-ink);
+  color-scheme: light;
+  --bg: var(--lt-ground);
+  --panel: var(--lt-panel);
+  --panel-2: var(--lt-aqua);
+  --line: var(--lt-line);
+  --muted: var(--lt-ink-soft);
+  --white: var(--lt-ink);
+  --pink: var(--lt-blue);
+  --mint: var(--lt-blue);
+  --violet: var(--lt-blue);
+  --gold: var(--lt-blue);
+}
+
+/* Header: a full-width slate bar, as in HR */
+.uv-portal .uv-header {
+  --white: #edf3f7;
+  --muted: #c3d2de;
+  --pink: #bddfe5;
+  --mint: #bddfe5;
+  --gold: #bddfe5;
+  --line: #647992;
+  color: #edf3f7;
+  padding-bottom: 14px;
+}
+.uv-portal .uv-header::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+  background: var(--lt-slate);
+  border-bottom: 1px solid #526986;
+}
+.uv-portal .uv-header-top {
+  height: 84px;
+}
+.uv-portal .uv-header-caption,
+.uv-portal .uv-preview-label,
+.uv-portal .uv-account-prefix {
+  color: #c3d2de;
+}
+.uv-portal .uv-icon-button,
+.uv-portal .uv-access-link {
+  color: #edf3f7;
+}
+.uv-portal .uv-icon-button:hover {
+  background: #3c5474;
+}
+.uv-portal .uv-profile-top {
+  color: #bddfe5;
+  border-color: #8fa8bb;
+}
+.uv-portal .onboard-brand {
+  --brand-cutout: var(--lt-slate);
+}
+.uv-portal .uv-navigation {
+  background: transparent;
+  border: 1px solid #647992;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.uv-portal .uv-nav-item {
+  border-color: #647992;
+  color: #dfebf1;
+}
+.uv-portal .uv-nav-item:hover {
+  background: #3c5474;
+  color: #ffffff;
+}
+.uv-portal .uv-nav-item.active {
+  background: var(--lt-aqua);
+  color: var(--lt-slate);
+}
+.uv-portal .uv-nav-item.active:after {
+  background: var(--lt-blue);
+}
+.uv-portal .uv-nav-item.active > svg,
+.uv-portal .uv-nav-item.active .uv-nav-number {
+  color: var(--lt-blue);
+}
+.uv-portal .uv-main {
+  padding-top: 26px;
+}
+
+/* Buttons */
+.uv-portal .uv-button.primary {
+  background: var(--lt-blue);
+  color: #ffffff;
+  box-shadow: 0 3px 0 var(--lt-blue-deep);
+}
+.uv-portal .uv-button.primary:hover {
+  background: var(--lt-blue-deep);
+}
+.uv-portal .fp-action {
+  color: var(--lt-ink);
+  border-color: #9fc3d3;
+  background: #ffffff;
+}
+.uv-portal .fp-action:hover:not(:disabled) {
+  background: var(--lt-aqua);
+}
+.uv-portal .fp-action.main {
+  background: var(--lt-blue);
+  border-color: var(--lt-blue);
+  color: #ffffff;
+}
+.uv-portal .fp-action.main:hover:not(:disabled) {
+  background: var(--lt-blue-deep);
+}
+.uv-portal .fp-action:disabled {
+  background: var(--lt-aqua-deep);
+  border-color: var(--lt-line);
+  color: #6f8498;
+}
+
+/* The hero is a slate card with light text, like HR's overview */
+.uv-portal .fp-hero {
+  --white: #edf3f7;
+  --muted: #c3d2de;
+  --pink: #bddfe5;
+  background: var(--lt-slate);
+  border-color: #4c6582;
+  color: #edf3f7;
+  border-radius: 12px;
+}
+.uv-portal .fp-hero .uv-button.primary {
+  background: #bddfe5;
+  color: #203249;
+  box-shadow: 0 3px 0 #15273b;
+}
+.uv-portal .fp-hero .uv-button.primary:hover {
+  background: #d0e9ed;
+}
+
+/* Panels */
+.uv-portal .fp-area,
+.uv-portal .fp-card,
+.uv-portal .fp-next {
+  background: var(--lt-panel);
+  border: 1px solid var(--lt-line);
+  border-radius: 12px;
+  color: var(--lt-ink);
+}
+.uv-portal .fp-area {
+  overflow: hidden;
+}
+.uv-portal .fp-area > summary small,
+.uv-portal .fp-percent,
+.uv-portal .fp-area-description,
+.uv-portal .fp-muted,
+.uv-portal .fp-card dt,
+.uv-portal .fp-requests small {
+  color: var(--lt-ink-soft);
+}
+.uv-portal .fp-area-number,
+.uv-portal .fp-live,
+.uv-portal .uv-eyebrow,
+.uv-portal .uv-mini-label {
+  color: var(--lt-blue);
+}
+.uv-portal .fp-hero .uv-eyebrow {
+  color: #acd6df;
+}
+.uv-portal .fp-bar {
+  background: #cbdae3;
+}
+.uv-portal .fp-bar > span {
+  background: var(--lt-blue);
+}
+.uv-portal .fp-doc-notice p,
+.uv-portal .learning-area-content > .learning-intro p {
+  color: var(--lt-ink);
+}
+
+/* Tasks: white cards with slate text and blue accents */
+.uv-portal .fp-steps {
+  display: grid;
+  gap: 12px;
+  padding: 4px 22px 22px;
+  border-top: 0;
+}
+.uv-portal .fp-step,
+.uv-portal .learning-task {
+  --white: var(--lt-ink);
+  --muted: var(--lt-ink-soft);
+  --line: var(--lt-line);
+  --panel: #ffffff;
+  --pink: var(--lt-blue);
+  --mint: var(--lt-blue);
+  background: #ffffff;
+  border: 1px solid var(--lt-line);
+  border-radius: 10px;
+  color: var(--lt-ink);
+}
+.uv-portal .fp-step {
+  padding: 16px 18px;
+}
+.uv-portal .fp-step.is-current {
+  border-left: 4px solid var(--lt-blue);
+}
+.uv-portal :is(.fp-step, .learning-task) :is(p, small, span, li, label, dt, dd, h3, h4, strong) {
+  color: inherit;
+}
+.uv-portal
+  :is(.fp-step, .learning-task)
+  :is(.fp-step-copy p, .fp-muted, .fp-optional, .fp-document-next) {
+  color: var(--lt-ink-soft);
+}
+.uv-portal :is(.fp-step, .learning-task) .fp-badge,
+.uv-portal :is(.fp-step, .learning-task) .fp-document-state {
+  background: #ffffff;
+  border-color: #9fc3d3;
+  color: var(--lt-ink);
+}
+.uv-portal :is(.fp-step, .learning-task) .fp-badge.done,
+.uv-portal :is(.fp-step, .learning-task) .fp-document-done,
+.uv-portal :is(.fp-step, .learning-task) .learning-confirmed,
+.uv-portal .fp-doc-complete {
+  background: #e4f4ec;
+  border-color: #2e9e6b;
+  color: #1f6b49;
+}
+.uv-portal :is(.fp-step, .learning-task) .fp-document-progress {
+  background: #fff6df;
+  border-color: #d9a441;
+  color: #7a5a12;
+}
+.uv-portal .fp-inline-error {
+  background: #fdecea;
+  color: #7a1f1f;
+}
+.uv-portal :is(.fp-step, .learning-task) .fp-document,
+.uv-portal :is(.fp-step, .learning-task) .learning-resource,
+.uv-portal :is(.fp-step, .learning-task) .handbook-document-viewer,
+.uv-portal :is(.fp-step, .learning-task) .comprehension-quiz-section,
+.uv-portal :is(.fp-step, .learning-task) .quiz-question-fieldset,
+.uv-portal :is(.fp-step, .learning-task) .alignment-activity-box,
+.uv-portal :is(.fp-step, .learning-task) .matching-row,
+.uv-portal :is(.fp-step, .learning-task) .scenario-card,
+.uv-portal :is(.fp-step, .learning-task) .role-responsibilities-checklist,
+.uv-portal :is(.fp-step, .learning-task) .tool-access-workflow-box,
+.uv-portal :is(.fp-step, .learning-task) .verified-directory-panel,
+.uv-portal :is(.fp-step, .learning-task) .channel-card {
+  background: var(--lt-aqua);
+  border-color: var(--lt-line);
+  color: var(--lt-ink);
+}
+.uv-portal input,
+.uv-portal select,
+.uv-portal textarea {
+  background: #ffffff;
+  border-color: #9fc3d3;
+  color: var(--lt-ink);
+}
+.uv-portal input::placeholder,
+.uv-portal textarea::placeholder {
+  color: #6f8498;
+}
+.uv-portal label {
+  color: var(--lt-ink);
+}
+.uv-portal .uv-form-hint {
+  color: var(--lt-ink-soft) !important;
+}
+
+/* Other employee pages */
+.uv-portal .uv-footer {
+  color: var(--lt-ink-soft);
+  border-color: var(--lt-line);
+}
+.uv-portal .account-profile-grid > section,
+.uv-portal .uv-note-empty,
+.uv-portal .uv-saved-note,
+.uv-portal .qr-card,
+.uv-portal .ap2-requirement {
+  background: var(--lt-card);
+  border-color: var(--lt-line);
+  color: var(--lt-ink);
+}
+.uv-portal .uv-tile-icon,
+.uv-portal .uv-tile-icon.mint,
+.uv-portal .uv-tile-icon.violet,
+.uv-portal .uv-tile-icon.amber {
+  background: var(--lt-aqua);
+  border-color: #9fc3d3;
+  color: var(--lt-blue);
+}
+.uv-portal .uv-topic-list span {
+  background: var(--lt-aqua);
+  border-color: #9fc3d3;
+  color: var(--lt-ink);
+}
+.uv-portal .uv-people-symbol > span {
+  background: var(--lt-aqua);
+  border-color: #9fc3d3;
+  color: var(--lt-blue);
+}
+.uv-portal .uv-people-symbol > span:nth-child(2) {
+  background: #ffffff;
+  color: var(--lt-ink);
+}
+.uv-portal .uv-people-symbol > span:last-child {
+  background: var(--lt-blue);
+  color: #ffffff;
+  border-color: var(--lt-blue);
+}
+.uv-portal .verification-badge.info-badge {
+  background: var(--lt-aqua);
+  color: var(--lt-blue-deep);
+  border-color: #9fc3d3;
+}
+.uv-portal .verification-badge.optional-badge {
+  background: #eef2f6;
+  color: var(--lt-ink-soft);
+}
+.uv-portal .fp-badge,
+.uv-portal .fp-document-state {
+  background: #ffffff;
+  border-color: #9fc3d3;
+  color: var(--lt-ink);
+}
+.uv-portal .fp-badge.done {
+  background: #e4f4ec;
+  border-color: #2e9e6b;
+  color: #1f6b49;
+}
+
+/* Contact cards and activity launchers: light blue. Directory channels: dark blue. */
+.uv-portal .learning-contacts article,
+.uv-portal .activity-card {
+  --white: var(--lt-ink);
+  --muted: var(--lt-ink-soft);
+  background: var(--lt-aqua);
+  border: 1px solid #9fc3d3;
+  border-radius: 10px;
+  color: var(--lt-ink);
+}
+.uv-portal .learning-contacts article :is(small, p, h4),
+.uv-portal .activity-card :is(strong, small) {
+  color: var(--lt-ink);
+}
+.uv-portal .learning-contacts article small {
+  color: var(--lt-ink-soft);
+}
+.uv-portal .channel-card {
+  background: var(--lt-slate);
+  border: 1px solid #4c6582;
+  border-radius: 10px;
+  color: #edf3f7;
+}
+.uv-portal .channel-card small {
+  color: #c3d2de;
+}
+.uv-portal .channel-card strong {
+  color: #ffffff;
+}
+.uv-portal .channel-card p {
+  color: #e1ebf1;
+}
+
+/* Alya's page in HR's colors: a light ground, a light conversation panel, white inputs. */
+.uv-portal.uv-assistant-workspace,
+.uv-portal.uv-assistant-workspace .alya-page {
+  background: var(--lt-ground);
+}
+.uv-portal.uv-assistant-workspace .alya-answer-space,
+.uv-portal.uv-assistant-workspace .alya-chat-panel,
+.uv-portal.uv-assistant-workspace .alya-composer-area,
+.uv-portal.uv-assistant-workspace .alya-composer,
+.uv-portal.uv-assistant-workspace .alya-memory-bar {
+  background: var(--lt-panel);
+  color: var(--lt-ink);
+  border-color: var(--lt-line);
+}
+.uv-portal.uv-assistant-workspace .alya-chat-panel {
+  border-radius: 12px;
+  overflow: hidden;
+}
+.uv-portal.uv-assistant-workspace .alya-chat-heading {
+  background: var(--lt-slate);
+}
+.uv-portal.uv-assistant-workspace .alya-chat-heading h2,
+.uv-portal.uv-assistant-workspace .alya-new-chat {
+  color: #edf3f7;
+}
+.uv-portal.uv-assistant-workspace .alya-message.user {
+  background: var(--lt-aqua);
+  color: var(--lt-ink);
+  border: 1px solid #9fc3d3;
+}
+.uv-portal.uv-assistant-workspace .alya-message,
+.uv-portal.uv-assistant-workspace .alya-answer-body,
+.uv-portal.uv-assistant-workspace .alya-answer-body > p,
+.uv-portal.uv-assistant-workspace .alya-passage > p,
+.uv-portal.uv-assistant-workspace .alya-live-page .alya-message p,
+.uv-portal.uv-assistant-workspace .alya-chat-thinking,
+.uv-portal.uv-assistant-workspace .alya-no-ai-bill,
+.uv-portal.uv-assistant-workspace .alya-answer-feedback > span,
+.uv-portal.uv-assistant-workspace .alya-passage summary,
+.uv-portal.uv-assistant-workspace .alya-passage details p,
+.uv-portal.uv-assistant-workspace .alya-answer-format,
+.uv-portal.uv-assistant-workspace .alya-voice-options p,
+.uv-portal.uv-assistant-workspace .alya-voice-preparing,
+.uv-portal.uv-assistant-workspace .alya-saved-chats > p,
+.uv-portal.uv-assistant-workspace .alya-chat-list > button,
+.uv-portal.uv-assistant-workspace .alya-memory-bar > button,
+.uv-portal.uv-assistant-workspace .alya-source-group summary,
+.uv-portal.uv-assistant-workspace .alya-source-group h4,
+.uv-portal.uv-assistant-workspace .alya-source-group small,
+.uv-portal.uv-assistant-workspace .alya-source-group section > p,
+.uv-portal.uv-assistant-workspace .alya-help-controls > summary,
+.uv-portal.uv-assistant-workspace .alya-voice-options .alya-motion-option,
+.uv-portal.uv-assistant-workspace .alya-ask-hr-sent,
+.uv-portal.uv-assistant-workspace .alya-action-resolved,
+.uv-portal.uv-assistant-workspace .alya-briefing-status,
+.uv-portal.uv-assistant-workspace .alya-live-page .alya-message p.alya-briefing-source,
+.uv-portal.uv-assistant-workspace .alya-live-page .alya-message p.alya-briefing-note,
+.uv-portal.uv-assistant-workspace .alya-answer-body h3,
+.uv-portal.uv-assistant-workspace .alya-answer-body li {
+  color: var(--lt-ink);
+}
+.uv-portal.uv-assistant-workspace .alya-passage summary,
+.uv-portal.uv-assistant-workspace .alya-no-ai-bill,
+.uv-portal.uv-assistant-workspace .alya-chat-thinking,
+.uv-portal.uv-assistant-workspace .alya-answer-feedback > span,
+.uv-portal.uv-assistant-workspace .alya-source-group small {
+  color: var(--lt-ink-soft);
+}
+.uv-portal.uv-assistant-workspace .alya-passage details > div,
+.uv-portal.uv-assistant-workspace .alya-source-group,
+.uv-portal.uv-assistant-workspace .alya-saved-chats,
+.uv-portal.uv-assistant-workspace .alya-voice-options,
+.uv-portal.uv-assistant-workspace .alya-learning-panel,
+.uv-portal.uv-assistant-workspace .alya-connection,
+.uv-portal.uv-assistant-workspace .alya-voice-error,
+.uv-portal.uv-assistant-workspace .alya-ask-hr,
+.uv-portal.uv-assistant-workspace .alya-action-card,
+.uv-portal.uv-assistant-workspace .alya-briefing-card,
+.uv-portal.uv-assistant-workspace .sr-preview {
+  background: var(--lt-aqua);
+  border-color: #9fc3d3;
+  color: var(--lt-ink);
+}
+.uv-portal.uv-assistant-workspace .alya-connection,
+.uv-portal.uv-assistant-workspace .alya-learning-panel > p,
+.uv-portal.uv-assistant-workspace .alya-learning-reason,
+.uv-portal.uv-assistant-workspace .sr-hint,
+.uv-portal.uv-assistant-workspace .sr-preview dt,
+.uv-portal.uv-assistant-workspace .sr-note p {
+  color: var(--lt-ink-soft);
+}
+.uv-portal.uv-assistant-workspace .alya-voice-error {
+  color: #8a3b1f;
+}
+.uv-portal.uv-assistant-workspace .alya-suggestions button,
+.uv-portal.uv-assistant-workspace .alya-chips button,
+.uv-portal.uv-assistant-workspace .alya-answer-tools button,
+.uv-portal.uv-assistant-workspace .alya-answer-feedback button,
+.uv-portal.uv-assistant-workspace .alya-ask-hr button,
+.uv-portal.uv-assistant-workspace .alya-action-buttons button,
+.uv-portal.uv-assistant-workspace .alya-briefing-error button,
+.uv-portal.uv-assistant-workspace .alya-briefing-card button,
+.uv-portal.uv-assistant-workspace .alya-briefing-card a.alya-briefing-secondary {
+  background: #ffffff;
+  border-color: #9fc3d3;
+  color: var(--lt-ink);
+}
+.uv-portal.uv-assistant-workspace .alya-suggestions button:hover,
+.uv-portal.uv-assistant-workspace .alya-chips button:hover:not(:disabled),
+.uv-portal.uv-assistant-workspace .alya-answer-tools button:hover,
+.uv-portal.uv-assistant-workspace .alya-ask-hr button:hover:not(:disabled),
+.uv-portal.uv-assistant-workspace .alya-action-buttons button:hover:not(:disabled),
+.uv-portal.uv-assistant-workspace .alya-briefing-card a.alya-briefing-secondary:hover {
+  background: var(--lt-aqua);
+}
+.uv-portal.uv-assistant-workspace .alya-answer-feedback button[aria-pressed='true'],
+.uv-portal.uv-assistant-workspace .alya-chat-list > button.selected {
+  background: var(--lt-aqua-deep);
+  color: var(--lt-blue-deep);
+}
+.uv-portal.uv-assistant-workspace .alya-help-note button,
+.uv-portal.uv-assistant-workspace .alya-retry,
+.uv-portal.uv-assistant-workspace .alya-stop-voice,
+.uv-portal.uv-assistant-workspace .alya-learning-reset,
+.uv-portal.uv-assistant-workspace .alya-shared-voice-label strong,
+.uv-portal.uv-assistant-workspace .alya-delete-confirm p,
+.uv-portal.uv-assistant-workspace .alya-delete-confirm button {
+  color: var(--lt-blue-deep);
+}
+.uv-portal.uv-assistant-workspace .alya-answer-body > p.alya-help-note {
+  background: var(--lt-aqua);
+  color: var(--lt-ink);
+}
+.uv-portal.uv-assistant-workspace .alya-send {
+  background: var(--lt-blue);
+  color: #ffffff;
+}
+.uv-portal.uv-assistant-workspace .alya-send.cancel {
+  background: #ffffff;
+  color: var(--lt-blue-deep);
+}
+.uv-portal.uv-assistant-workspace .alya-inline-error,
+.uv-portal.uv-assistant-workspace .sr-error,
+.uv-portal.uv-assistant-workspace .alya-briefing-error {
+  background: #fdecea;
+  color: #7a1f1f;
+}
+.uv-portal.uv-assistant-workspace .alya-message.error .alya-answer-body > p {
+  color: #7a1f1f;
+}
+.uv-portal.uv-assistant-workspace .alya-composer textarea,
+.uv-portal.uv-assistant-workspace .sr-note textarea,
+.uv-portal.uv-assistant-workspace .alya-voice-options select,
+.uv-portal.uv-assistant-workspace .alya-learning-panel > select {
+  background: #ffffff;
+  color: var(--lt-ink);
+  border-color: #9fc3d3;
+}
+.uv-portal.uv-assistant-workspace .alya-full-toggle {
+  color: var(--lt-blue-deep);
+}
+.uv-portal.uv-assistant-workspace .alya-full-toggle:hover {
+  color: var(--lt-blue);
+}
+.uv-portal.uv-assistant-workspace .alya-full-body > p,
+.uv-portal.uv-assistant-workspace .alya-live-page .alya-message.assistant,
+.uv-portal.uv-assistant-workspace .alya-live-page .alya-message p.alya-reply-heading,
+.uv-portal.uv-assistant-workspace .alya-live-page .alya-message p.alya-reply-note {
+  color: var(--lt-ink);
+}
+
+/* The brand in the page footer sits on the light ground: dark name, blue mark and "AI". */
+.uv-portal .uv-footer .onboard-brand {
+  color: var(--lt-blue);
+  --brand-cutout: var(--lt-ground);
+}
+.uv-portal .uv-footer .onboard-brand-name {
+  color: var(--lt-slate);
+}
+.uv-portal .uv-footer .onboard-brand-name > span {
+  color: var(--lt-blue);
+}

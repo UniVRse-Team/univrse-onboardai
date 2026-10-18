@@ -3,9 +3,11 @@ import Icon from './Icon';
 import LearningArea from './LearningArea';
 import {
   learningAreas,
-  continueLearning,
   focusLearningStep,
   focusStepKey,
+  descriptionText,
+  resourceLabel,
+  taskResources,
 } from './learning-area-model.mjs';
 import CheckDialog from './CheckDialog';
 import { journeyErrorMessage } from '../access/journey-errors.mjs';
@@ -23,14 +25,17 @@ import {
   focusAfterStepAction,
   formatWhen,
   myRequestStatus,
-  nextStepBanner,
-  overallSummary,
   stepActions,
   stepErrorMessage,
   stepStatusLabel,
 } from '../access/onboarding-view.mjs';
 import { saveHandoff, stepAskHandoff } from '../access/support-flow.mjs';
 import './footprint.css';
+import {
+  documentSectionStatus,
+  documentStepState,
+  documentTasks,
+} from '../documents/document-steps.mjs';
 import DashboardDocumentUpload, {
   DocumentSectionNotice,
   useDashboardDocuments,
@@ -244,28 +249,28 @@ export default function EmployeeFootprint({ navigate, chatPath, account, expande
       </section>
     );
 
-  const banner = nextStepBanner(onboarding);
-  const nextFound = banner.kind === 'next' ? findStep(onboarding, banner.stepId) : null;
   const rows = firstDayRows(firstDay?.firstDay);
-  const name = account?.username || '';
+  const docStatus = documentSectionStatus(
+    onboarding.areas.find((item) => item.id === 'documentation')?.steps || [],
+    documents.submissions,
+  );
   return (
     <section className="fp" aria-labelledby="fp-title">
       <header className="fp-hero">
         <div>
-          <span className="uv-eyebrow">YOUR ONBOARDING FOOTPRINT</span>
+          <span className="uv-eyebrow">
+            {account?.company?.name
+              ? `${account.company.name.toUpperCase()} ONBOARDING FOOTPRINT`
+              : 'YOUR ONBOARDING FOOTPRINT'}
+          </span>
           <h1 id="fp-title" tabIndex={-1} ref={headingRef}>
             {onboarding.complete ? 'Onboarding complete.' : 'One step at a time.'}
           </h1>
-          <p>{overallSummary(onboarding)}</p>
           {onboarding.complete && (
             <p className="fp-complete">
               Onboarding complete. The remaining steps are still worth finishing when you can.
             </p>
           )}
-          <p className="fp-muted">
-            {onboarding.track ? `Your plan: ${onboarding.track}.` : ''}{' '}
-            {name && `Signed in as ${name}.`}
-          </p>
           <div className="fp-hero-actions">
             <button type="button" className="uv-button primary" onClick={() => navigate(chatPath)}>
               Ask Alya
@@ -280,48 +285,6 @@ export default function EmployeeFootprint({ navigate, chatPath, account, expande
         {announce}
       </div>
 
-      <section className={'fp-next ' + banner.kind} aria-labelledby="fp-next-title">
-        <span className="uv-mini-label">YOUR NEXT STEP</span>
-        <h2 id="fp-next-title">{banner.title}</h2>
-        {banner.kind === 'next' ? (
-          <>
-            <p className="fp-muted">{banner.areaTitle}</p>
-            {nextFound?.step.description && <p>{nextFound.step.description}</p>}
-            <div className="fp-step-actions">
-              {nextFound && (
-                <StepActions
-                  step={nextFound.step}
-                  busy={busyStep === nextFound.step.id}
-                  onAction={run}
-                />
-              )}
-            </div>
-            {nextFound && stepErrors[nextFound.step.id] && (
-              <p className="fp-inline-error" role="alert">
-                {stepErrors[nextFound.step.id]}
-              </p>
-            )}
-          </>
-        ) : (
-          <p>{banner.text}</p>
-        )}
-      </section>
-
-      <div className="learning-continue">
-        <button
-          type="button"
-          className="fp-action main"
-          disabled={!continueLearning(onboarding.areas)}
-          onClick={() => focusLearningStep(continueLearning(onboarding.areas).id)}
-        >
-          Continue where you left off
-        </button>
-        <p>
-          {continueLearning(onboarding.areas)
-            ? 'Jump to your next required learning or setup task below.'
-            : 'All four learning and setup areas are complete.'}
-        </p>
-      </div>
       <div className="fp-areas">
         {onboarding.areas.map((area, index) =>
           learningAreas.includes(area.id) ? (
@@ -342,11 +305,18 @@ export default function EmployeeFootprint({ navigate, chatPath, account, expande
                   </span>
                   <span>
                     <strong>{area.title}</strong>
-                    <small>{areaSummary(area)}</small>
-                    {areaBadge(area, onboarding) && (
+                    <small>
+                      {area.id === 'documentation'
+                        ? documentSectionStatus(area.steps, documents.submissions).text
+                        : areaSummary(area)}
+                    </small>
+                    {(area.id === 'documentation'
+                      ? documentSectionStatus(area.steps, documents.submissions).completed &&
+                        'Completed'
+                      : areaBadge(area, onboarding)) && (
                       <span className="fp-badge done">
                         <Icon name="check" size={12} />
-                        {areaBadge(area, onboarding)}
+                        {area.id === 'documentation' ? 'Completed' : areaBadge(area, onboarding)}
                       </span>
                     )}
                   </span>
@@ -371,29 +341,73 @@ export default function EmployeeFootprint({ navigate, chatPath, account, expande
               </summary>
               {area.description && <p className="fp-area-description">{area.description}</p>}
               {area.id === 'documentation' && <DocumentSectionNotice documents={documents} />}
+              {area.id === 'documentation' &&
+                (() => {
+                  const status = documentSectionStatus(area.steps, documents.submissions);
+                  return status.completed ? (
+                    <p className="fp-doc-complete" role="status">
+                      ✓ {status.completionMessage}
+                    </p>
+                  ) : null;
+                })()}
               <ul className="fp-steps">
                 {area.steps.map((step) => (
-                  <li key={step.id} className={'fp-step ' + step.status}>
+                  <li
+                    key={step.id}
+                    id={'learning-' + step.id}
+                    tabIndex={-1}
+                    className={
+                      'fp-step ' +
+                      step.status +
+                      (area.id === 'documentation' && step.id === docStatus.nextStepId
+                        ? ' is-current'
+                        : '')
+                    }
+                  >
                     <div className="fp-step-copy">
                       <strong>{step.title}</strong>
-                      {step.description && <p>{step.description}</p>}
+                      {descriptionText(step) && <p>{descriptionText(step)}</p>}
+                      {taskResources(step).map((url) => (
+                        <a
+                          key={url}
+                          className="fp-action"
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {resourceLabel(step, url)}
+                        </a>
+                      ))}
                       {optionalStepLabel(step) && (
                         <p className="fp-optional">{optionalStepLabel(step)}</p>
                       )}
-                      <span
-                        className={'fp-badge ' + step.status}
-                        tabIndex={-1}
-                        data-step-status={step.id}
-                      >
-                        {step.status === 'done' && <Icon name="check" size={12} />}
-                        {stepStatusLabel(step)}
-                      </span>
+                      {/* A Documentation task shows its one status inside its own card below. */}
+                      {area.id !== 'documentation' && (
+                        <span
+                          className={'fp-badge ' + step.status}
+                          tabIndex={-1}
+                          data-step-status={step.id}
+                        >
+                          {step.status === 'done' && <Icon name="check" size={12} />}
+                          {stepStatusLabel(step)}
+                        </span>
+                      )}
                     </div>
                     <div className="fp-step-actions">
                       <StepActions step={step} busy={busyStep === step.id} onAction={run} />
                     </div>
                     {area.id === 'documentation' && (
-                      <DashboardDocumentUpload step={step} documents={documents} />
+                      <DashboardDocumentUpload
+                        step={step}
+                        documents={documents}
+                        onSaved={load}
+                        isNext={docStatus.nextStepId === step.id}
+                        locked={Boolean(
+                          documentTasks(area.steps, documents.submissions).find(
+                            (task) => task.step.id === step.id,
+                          )?.locked,
+                        )}
+                      />
                     )}
                     {stepErrors[step.id] && (
                       <p className="fp-inline-error" role="alert">

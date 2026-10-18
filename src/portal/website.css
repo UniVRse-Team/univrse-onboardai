@@ -203,11 +203,10 @@ em {
     color 0.2s;
 }
 .uv-nav-item:first-child {
-  padding-left: 0;
+  padding-left: 19px;
 }
 .uv-nav-item:last-child {
   border-right: 0;
-  padding-right: 0;
 }
 .uv-nav-number {
   font-size: 9px;
@@ -238,9 +237,6 @@ em {
   right: 18px;
   height: 2px;
   background: var(--pink);
-}
-.uv-nav-item:first-child.active:after {
-  left: 0;
 }
 .uv-nav-item.active > svg {
   opacity: 1;

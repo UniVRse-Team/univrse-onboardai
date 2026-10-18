@@ -519,11 +519,26 @@ run "documents_bucket_is_private_and_readable_only_by_discovery_engine" {
     error_message = "The documents bucket keeps versions and is never force-destroyed."
   }
 
-  # Two bucket grants in the whole module: the Discovery Engine service agent
-  # (objectViewer) and onboardai-api-run (objectUser, to upload/delete HR docs).
   assert {
-    condition     = sum([for f in fileset(path.module, "*.tf") : length(regexall("resource\\s+\"google_storage_bucket_iam_", file("${path.module}/${f}")))]) == 2
-    error_message = "Exactly two bucket IAM resources may exist (Discovery Engine reads the documents; onboardai-api-run manages HR uploads)."
+    condition     = google_storage_bucket.employee_docs.name == "onboardai-test-123-onboardai-employee-docs" && google_storage_bucket.employee_docs.location == "ASIA-SOUTHEAST1" && output.employee_documents_bucket_name == google_storage_bucket.employee_docs.name
+    error_message = "Private employee documents bucket <project>-onboardai-employee-docs in asia-southeast1."
+  }
+
+  assert {
+    condition     = google_storage_bucket.employee_docs.uniform_bucket_level_access == true && google_storage_bucket.employee_docs.public_access_prevention == "enforced"
+    error_message = "The employee documents bucket needs uniform access and enforced public access prevention."
+  }
+
+  assert {
+    condition     = google_storage_bucket.employee_docs.versioning[0].enabled == true && google_storage_bucket.employee_docs.force_destroy == false
+    error_message = "The employee documents bucket keeps versions and is never force-destroyed."
+  }
+
+  # Three bucket grants in the whole module: the Discovery Engine service agent
+  # (objectViewer on docs) and onboardai-api-run (objectUser on docs and employee_docs).
+  assert {
+    condition     = sum([for f in fileset(path.module, "*.tf") : length(regexall("resource\\s+\"google_storage_bucket_iam_", file("${path.module}/${f}")))]) == 3
+    error_message = "Exactly three bucket IAM resources may exist (Discovery Engine reads company documents; onboardai-api-run manages HR uploads and employee submissions)."
   }
 
   assert {
@@ -533,9 +548,12 @@ run "documents_bucket_is_private_and_readable_only_by_discovery_engine" {
       google_storage_bucket_iam_member.discovery_engine_reads_docs.member == "serviceAccount:service-123456789012@gcp-sa-discoveryengine.iam.gserviceaccount.com" &&
       google_storage_bucket_iam_member.api_manages_docs.bucket == google_storage_bucket.docs.name &&
       google_storage_bucket_iam_member.api_manages_docs.role == "roles/storage.objectUser" &&
-      google_storage_bucket_iam_member.api_manages_docs.member == "serviceAccount:${google_service_account.runtime["api"].email}"
+      google_storage_bucket_iam_member.api_manages_docs.member == "serviceAccount:${google_service_account.runtime["api"].email}" &&
+      google_storage_bucket_iam_member.api_manages_employee_docs.bucket == google_storage_bucket.employee_docs.name &&
+      google_storage_bucket_iam_member.api_manages_employee_docs.role == "roles/storage.objectUser" &&
+      google_storage_bucket_iam_member.api_manages_employee_docs.member == "serviceAccount:${google_service_account.runtime["api"].email}"
     )
-    error_message = "The Discovery Engine service agent gets roles/storage.objectViewer and onboardai-api-run gets roles/storage.objectUser on the documents bucket only."
+    error_message = "The Discovery Engine service agent gets roles/storage.objectViewer on docs, and onboardai-api-run gets roles/storage.objectUser on docs and employee_docs."
   }
 
   assert {
@@ -852,7 +870,7 @@ run "production_keeps_its_names_labels_and_grants" {
     condition = alltrue([
       for labels in concat(
         [for s in google_cloud_run_v2_service.service : s.labels],
-        [google_artifact_registry_repository.onboardai.labels, google_storage_bucket.docs.labels],
+        [google_artifact_registry_repository.onboardai.labels, google_storage_bucket.docs.labels, google_storage_bucket.employee_docs.labels],
       ) : !contains(keys(labels), "environment")
     ]) && google_monitoring_alert_policy.server_errors.user_labels == tomap({ app = "onboardai", managed-by = "terraform" })
     error_message = "Production resources carry no environment label: adding one would update every production resource."

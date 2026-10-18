@@ -13,6 +13,7 @@ import { createFirestoreChatMemory } from '../../server/firestore-chat-memory.mj
 import { createConversationService } from '../../server/gemini-chat-workflow.mjs';
 import { hashPassword, verifyPassword } from '../../server/password-hashing.mjs';
 import { builtInTemplate } from '../../server/onboarding-content.mjs';
+import { DEFAULT_COMPANY_ID } from '../../server/companies.mjs';
 import { FakeFirestore } from './fake-firestore.mjs';
 import { createTestDatabase } from './test-database.mjs';
 
@@ -274,6 +275,7 @@ export async function startAccountsApp({
       mustChangePassword: false,
       action: 'hr_account_created',
       at: clock.now(),
+      companyId: DEFAULT_COMPANY_ID,
     });
   }
   return {
@@ -327,7 +329,11 @@ export async function startAccountsApp({
       const current = firestore.read(path) || { accountId, steps: {} };
       const at = clock.now().toISOString();
       const steps = { ...current.steps };
-      for (const area of builtInTemplate(track).areas)
+      // The stored template the server uses: current-version only; older ones are ignored.
+      const stored = firestore.read(`onboardingTemplates/${track}`);
+      const used =
+        stored?.version >= builtInTemplate(track).version ? stored : builtInTemplate(track);
+      for (const area of used.areas)
         for (const step of area.steps)
           if (step.required && step.briefing)
             steps[step.id] = { ...(steps[step.id] || {}), briefedAt: at, briefedBy: by };

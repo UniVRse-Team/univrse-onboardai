@@ -4,13 +4,13 @@
 
 Run `npm run dev:preview`, then open:
 
-- Employee: http://localhost:3000/dashboard (expand Documentation; uploads live inside each step).
+- Employee: http://localhost:3000/onboarding (expand Documentation; uploads live inside each step).
 - HR: http://localhost:3000/hr#submissions (Submissions in the HR navigation).
 
 The guarded preview starts with six clearly labelled synthetic submissions. Upload a
-sample PDF, DOCX, JPG or PNG (up to 5 MB); switch to HR, review it, and return to
+sample PDF, DOCX, JPG or PNG (up to 25 MB); switch to HR, review it, and return to
 the corresponding employee dashboard step to see the decision and remarks. Both sides share the same
-in-memory records and file bytes. Focus the window or press Refresh document status to reload; visible dashboards also refresh every 30 seconds.
+in-memory records and file bytes. Document status updates automatically after an upload, when the window is focused and every 30 seconds.
 Changes disappear when the preview restarts. This is not a production upload.
 
 ## Architecture and production configuration
@@ -53,7 +53,7 @@ policy is imposed; HR must confirm retention, access and audit requirements.
 
 ## Assumptions and current limits
 
-- One file per submission, maximum 5 MB. Categories and statuses are shared in
+- One file per submission, maximum 25 MB. Categories and statuses are shared in
   `shared/document-submissions.mjs` and can be edited centrally.
 - Submission time and employee identity are assigned by the server. Step IDs are validated against the employee’s actual Documentation plan.
 - Rejection requires remarks. Employees resubmit as a new Pending Review record,
@@ -62,7 +62,21 @@ policy is imposed; HR must confirm retention, access and audit requirements.
 - Pagination, search, filters and sorting are client-side over the authorized
   metadata list (10 HR rows; employee history grouped within each step). For large organizations, move
   filtering and pagination into indexed server queries before rollout.
-- No email notification, OCR, e-signature, or automatic onboarding completion.
+- No email notification, OCR or e-signature.
+- **Step progress follows the saved submission.** Each Documentation step is one
+  required document. For the employee it is To do (action: Start) until a document
+  has been saved, then Completed (the step is done). Tasks open in order, one at a time. The
+  employee list never shows Pending, Submitted, Rejected or review labels. HR's review (Pending Review, Under
+  Review, Approved, Rejected) is separate and never changes the employee's progress.
+  Employees cannot mark a document step done or submitted by a click (409
+  `DOCUMENT_REQUIRED`), HR cannot un-submit one that has a saved document (409
+  `DOCUMENT_SUBMITTED`), and Alya never marks one from chat. The step is re-derived on
+  every read and after every upload, so a failed write heals itself. Saved progress is never reset by a read: an HR
+  verification or other earlier status with no document is left as it is. If HR rejects a document the employee's task stays complete; the employee view has no
+  way to resubmit yet (HR review follow-up is out of scope).
+- One document is in play per step: a new upload is accepted only when there is none
+  or HR rejected the latest (it is then linked as the resubmission). Approved and
+  Rejected are final decisions.
 - UI success means the API saved metadata AND file bytes; review success means
   the revision-checked metadata update completed. Preview success is labelled as
   temporary. No production authentication bypass was added.
@@ -96,7 +110,7 @@ Updated:
 - `server/api-routes.mjs` and `server/account-routes.mjs` — service wiring and account deletion cleanup.
 - `server/read-uploaded-document.mjs` and `server/uploaded-document-worker.mjs` — validation-only mode, including scanned PDFs.
 - `src/portal/EmployeeFootprint.jsx` — uploads in the existing Documentation steps.
-- `src/access/legacy-paths.mjs` — redirect the retired `/documents` URL to `/dashboard`.
+- `src/access/legacy-paths.mjs` — redirect the retired `/documents` URL to `/onboarding`.
 - `src/access/HrWorkspace.jsx` and `src/access/hr-navigation.mjs` — HR tab and bookmarkable hash navigation.
 - `scripts/start-local-preview.mjs` — memory files, sample records and safe file-response headers.
 - `tests/server/account-harness.mjs` and `tests/frontend/hr-navigation.test.mjs` — fixture injection and navigation expectation.
@@ -104,4 +118,4 @@ Updated:
 
 Earlier local-preview and sign-in-form changes were preserved. `.env` was not changed.
 
-No separate employee submission page or navigation item is added. Existing Ask Alya, briefing and checklist verification remain intact; document approval does not automatically complete a checklist step. Older records without a step link remain available under Earlier submissions. The default tax/ID category is Identification Document; other Documentation steps use Employment Documents. One step may have multiple files, with the latest review shown prominently and all files retained in its history.
+No separate employee submission page or navigation item is added. Existing Ask Alya, briefing and checklist verification remain intact; submitting a document completes its Documentation step (see above). Older records without a step link remain available under Earlier submissions. The default tax/ID category is Identification Document; other Documentation steps use Employment Documents. One step may have multiple files, with the latest review shown prominently and all files retained in its history.

@@ -144,7 +144,6 @@ export async function createAvatarScene(
       throw new DOMException('Aborted', 'AbortError');
     }
     prepareDigitalHuman(model, renderer);
-    model.rotation.y = -0.055;
     scene.add(model);
     const morphs = new Map();
     model.traverse((o) => {
@@ -162,17 +161,51 @@ export async function createAvatarScene(
       expressionLevels.set(name, value);
       set(name, value);
     };
-    let nextGaze = 0,
-      gazeX = 0,
-      gazeY = 0;
     const mouthNames = [...morphs.keys()].filter((name) => name.startsWith('viseme_'));
     const levels = new Map(mouthNames.map((name) => [name, 0]));
-    const head = model.getObjectByName('Head'),
-      neck = model.getObjectByName('Neck'),
-      chest = model.getObjectByName('Spine2');
-    const headRest = head?.rotation.clone(),
-      neckRest = neck?.rotation.clone(),
-      chestRest = chest?.rotation.clone();
+    // The bones that carry her posture, with their authored rest rotations.
+    const bone = (name) => model.getObjectByName(name);
+    const hips = bone('Hips'),
+      spine1 = bone('Spine1'),
+      chest = bone('Spine2'),
+      neck = bone('Neck'),
+      head = bone('Head'),
+      leftShoulder = bone('LeftShoulder'),
+      rightShoulder = bone('RightShoulder'),
+      leftEye = bone('LeftEye'),
+      rightEye = bone('RightEye');
+    const restOf = (o) => o?.quaternion.clone();
+    const rest = {
+      hips: restOf(hips),
+      spine1: restOf(spine1),
+      chest: restOf(chest),
+      neck: restOf(neck),
+      head: restOf(head),
+      leftShoulder: restOf(leftShoulder),
+      rightShoulder: restOf(rightShoulder),
+    };
+    const euler = new T.Euler(),
+      delta = new T.Quaternion(),
+      eyeMid = new T.Vector3(),
+      toCamera = new T.Vector3(),
+      eyeLocal = new T.Vector3();
+    // Rotate a bone from its rest pose, in its own frame (spine, neck, head) or in
+    // its parent's frame (the shoulders, whose own axes are turned).
+    const pose = (o, restQ, x, y, z, inParent = false) => {
+      if (!o) return;
+      delta.setFromEuler(euler.set(x, y, z));
+      if (inParent) o.quaternion.copy(delta).multiply(restQ);
+      else o.quaternion.copy(restQ).multiply(delta);
+    };
+    // Slow, uneven movement: three sines that never line up, so nothing repeats visibly.
+    const drift = (t, a, b, c) =>
+      (Math.sin(t * a) + Math.sin(t * b + 1.3) + Math.sin(t * c + 2.1)) / 3;
+    // How far her head has turned toward the camera, and a short look-away at times.
+    const gaze = { yaw: 0, pitch: 0, glanceUntil: 0, nextGlance: 6000, glanceX: 0, glanceY: 0 };
+    const eyeLevels = { yaw: 0, pitch: 0 };
+    const headTurnLimit = { yaw: 0.6, pitch: 0.42 };
+    // Her body faces the viewer, with a slight natural turn rather than a rigid front.
+    model.rotation.y = 0.025;
     let nextBlink = performance.now() + 2400,
       blinkStart = 0,
       ready = false;
@@ -199,51 +232,91 @@ export async function createAvatarScene(
       set('eyeBlinkLeft', reduced ? 0 : blink);
       set('eyeBlinkRight', reduced ? 0 : blink);
       const thinking = getThinking?.() && !frame.speaking;
-      ease('mouthSmileLeft', frame.speaking ? 0.025 : thinking ? 0.035 : 0.1, dt);
-      ease('mouthSmileRight', frame.speaking ? 0.025 : thinking ? 0.035 : 0.09, dt);
-      ease('eyeSquintLeft', 0.025, dt);
-      ease('eyeSquintRight', 0.025, dt);
+      ease('mouthSmileLeft', frame.speaking ? 0.03 : thinking ? 0.05 : 0.16, dt);
+      ease('mouthSmileRight', frame.speaking ? 0.03 : thinking ? 0.05 : 0.15, dt);
+      ease('eyeSquintLeft', 0.05, dt);
+      ease('eyeSquintRight', 0.05, dt);
       ease('browInnerUp', thinking ? 0.09 : 0.025, dt);
       ease('cheekSquintLeft', frame.speaking ? 0.015 : 0.04, dt);
       ease('cheekSquintRight', frame.speaking ? 0.015 : 0.04, dt);
-      if (now > nextGaze) {
-        nextGaze = now + 2600 + Math.random() * 3000;
-        gazeX = Math.random() < 0.65 ? 0 : (Math.random() - 0.5) * 0.18;
-        gazeY = (Math.random() - 0.5) * 0.06;
+      const seconds = now / 1000;
+      const speaking = Boolean(frame.speaking);
+      // --- Posture: breathing, weight shift and small asymmetry (none when motion is reduced).
+      const breath = reduced ? 0 : Math.sin(seconds * Math.PI * 2 * 0.26);
+      const sway = reduced ? 0 : drift(seconds, 0.21, 0.37, 0.53);
+      const settle = reduced ? 0 : drift(seconds, 0.33, 0.59, 0.91);
+      model.position.y = reduced ? 0 : breath * 0.0012;
+      pose(hips, rest.hips, 0, sway * 0.018, sway * 0.014);
+      pose(spine1, rest.spine1, breath * 0.004, -sway * 0.01, -sway * 0.01);
+      // The chest stands a little straighter than the authored lean and rises with each breath.
+      pose(
+        chest,
+        rest.chest,
+        -0.035 + breath * 0.009,
+        -sway * 0.012 + settle * 0.004,
+        -sway * 0.008,
+      );
+      // One shoulder rests slightly lower than the other; both lift a little as she breathes.
+      pose(leftShoulder, rest.leftShoulder, 0, 0, -0.03 + breath * 0.006 + settle * 0.004, true);
+      pose(rightShoulder, rest.rightShoulder, 0, 0, 0.012 - breath * 0.006 - settle * 0.004, true);
+      // --- Head: a soft tilt, a small nod while she speaks, and the turn toward the viewer.
+      const nod = speaking ? Math.sin(seconds * 3.1) * 0.012 : Math.sin(seconds * 0.7) * 0.004;
+      const tilt = reduced ? 0 : 0.03 + settle * 0.012 + sway * 0.01;
+      pose(neck, rest.neck, gaze.pitch * 0.3, gaze.yaw * 0.3, tilt * 0.4);
+      pose(head, rest.head, gaze.pitch * 0.7 + nod, gaze.yaw * 0.7, tilt * 0.6);
+      // --- Eye contact: aim at the camera. The head turns most of the way and the eyes
+      // take what is left, measured after the pose above, so the gaze lands on the viewer.
+      model.updateMatrixWorld(true);
+      if (head && leftEye && rightEye) {
+        leftEye
+          .getWorldPosition(eyeMid)
+          .add(rightEye.getWorldPosition(toCamera))
+          .multiplyScalar(0.5);
+        eyeLocal.copy(eyeMid);
+        head.worldToLocal(eyeLocal);
+        toCamera.copy(camera.position);
+        head.worldToLocal(toCamera);
+        toCamera.sub(eyeLocal);
+        const yawError = Math.atan2(toCamera.x, toCamera.z);
+        const pitchError = Math.atan2(toCamera.y, Math.hypot(toCamera.x, toCamera.z));
+        // Turn the head toward the viewer, a little each frame, within a natural range.
+        const follow = 1 - Math.exp(-dt * (reduced ? 12 : 3.2));
+        gaze.yaw = T.MathUtils.clamp(
+          gaze.yaw + yawError * 0.7 * follow,
+          -headTurnLimit.yaw,
+          headTurnLimit.yaw,
+        );
+        // A positive pitch turns the head down, so looking up needs a negative one.
+        gaze.pitch = T.MathUtils.clamp(
+          gaze.pitch - pitchError * 0.7 * follow,
+          -headTurnLimit.pitch,
+          headTurnLimit.pitch,
+        );
+        // Eyes: the remaining angle, plus tiny natural shifts and a rare, brief look away.
+        if (!reduced) {
+          if (now > gaze.nextGlance && now > gaze.glanceUntil) {
+            gaze.glanceUntil = now + (getThinking?.() ? 1100 : 550);
+            gaze.nextGlance = now + 7000 + Math.random() * 6000;
+            gaze.glanceX = (Math.random() < 0.5 ? -1 : 1) * (0.08 + Math.random() * 0.05);
+            gaze.glanceY = getThinking?.() ? 0.1 : 0.03;
+          }
+        }
+        const glancing = !reduced && now < gaze.glanceUntil;
+        const microX = reduced ? 0 : drift(seconds, 1.9, 3.1, 4.7) * 0.012;
+        const microY = reduced ? 0 : drift(seconds, 1.3, 2.9, 4.1) * 0.008;
+        const eyeYaw = yawError + microX + (glancing ? gaze.glanceX : 0);
+        const eyePitch = pitchError + microY + (glancing ? gaze.glanceY : 0);
+        const range = 0.45;
+        eyeLevels.yaw = T.MathUtils.clamp(eyeYaw / range, -1, 1);
+        eyeLevels.pitch = T.MathUtils.clamp(eyePitch / range, -1, 1);
       }
-      const x = reduced ? 0 : gazeX,
-        y = reduced ? 0 : gazeY;
+      const x = eyeLevels.yaw,
+        y = eyeLevels.pitch;
       for (const side of ['Left', 'Right']) {
         ease('eyeLookUp' + side, Math.max(0, y), dt);
         ease('eyeLookDown' + side, Math.max(0, -y), dt);
         ease('eyeLookOut' + side, Math.max(0, side === 'Left' ? x : -x), dt);
         ease('eyeLookIn' + side, Math.max(0, side === 'Left' ? -x : x), dt);
-      }
-      if (!reduced) {
-        const seconds = now / 1000;
-        model.position.y = Math.sin(seconds * 1.4) * 0.0015;
-        if (chest) {
-          chest.rotation.x = chestRest.x + Math.sin(seconds * 1.15) * 0.003;
-          chest.rotation.z = chestRest.z + Math.sin(seconds * 0.47) * 0.002;
-        }
-        if (head) {
-          head.rotation.x =
-            headRest.x +
-            Math.sin(seconds * (frame.speaking ? 3.1 : 0.7)) * (frame.speaking ? 0.014 : 0.005);
-          const facing = headRest.y + (getPresenting?.() && frame.speaking ? 0.07 : 0);
-          head.rotation.y = T.MathUtils.damp(
-            head.rotation.y,
-            facing + Math.sin(seconds * 0.65) * 0.028,
-            3,
-            dt,
-          );
-        }
-        if (neck) neck.rotation.z = neckRest.z + Math.sin(seconds * 0.8) * 0.009;
-      } else {
-        model.position.y = 0;
-        if (head) head.rotation.copy(headRest);
-        if (neck) neck.rotation.copy(neckRest);
-        if (chest) chest.rotation.copy(chestRest);
       }
       renderer.render(scene, camera);
       if (!ready) {

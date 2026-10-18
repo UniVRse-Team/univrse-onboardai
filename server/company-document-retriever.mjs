@@ -1,3 +1,5 @@
+import { DEFAULT_COMPANY_ID } from './companies.mjs';
+import { profileCandidates, selectProfilePassages } from './company-profile.mjs';
 import { tasks } from './sample-onboarding-content.mjs';
 import {
   createVertexSearch,
@@ -81,16 +83,66 @@ export function samplePassages(query) {
     .map((item) => item.passage);
 }
 
-// retrieve(query, { signal, pageSize }) -> [{ title, heading, text, excerpt?,
-// uri?, vertexId? }] in rank order. pageSize (Vertex AI Search only) asks for
-// that many results instead of 5; the sample guide ignores it.
-export function createCompanyRetriever({ env = {}, fetchImpl, getAccessToken, log } = {}) {
+// retrieve(query, { signal, companyId, pageSize }) -> [{ title, heading, text, excerpt?,
+// uri?, vertexId? }] in rank order.
+export function createCompanyRetriever({
+  env = {},
+  fetchImpl,
+  getAccessToken,
+  log,
+  getCompanyProfile = null,
+} = {}) {
   const config = vertexSearchConfig(env);
-  if (!config) return async (query) => samplePassages(query);
-  const search = createVertexSearch({ config, fetchImpl, getAccessToken, log });
-  return (query, options) =>
-    search(query, {
-      signal: options?.signal,
-      ...(options?.pageSize ? { pageSize: options.pageSize } : {}),
-    });
+  const search = config ? createVertexSearch({ config, fetchImpl, getAccessToken, log }) : null;
+  const profileCache = new Map();
+
+  function clearProfileCache(companyId) {
+    if (companyId) profileCache.delete(companyId);
+    else profileCache.clear();
+  }
+
+  async function getProfileCandidates(companyId) {
+    if (!companyId || !getCompanyProfile) return [];
+    const now = Date.now();
+    const cached = profileCache.get(companyId);
+    if (cached && cached.expiresAt > now) return cached.candidates;
+    try {
+      const envelope = await getCompanyProfile(companyId);
+      if (!envelope || envelope.version === 0) {
+        profileCache.set(companyId, { expiresAt: now + 60000, version: 0, candidates: [] });
+        return [];
+      }
+      const candidates = profileCandidates(envelope.profile);
+      profileCache.set(companyId, {
+        expiresAt: now + 60000,
+        version: envelope.version,
+        candidates,
+      });
+      return candidates;
+    } catch {
+      return [];
+    }
+  }
+
+  const retriever = async (query, options = {}) => {
+    const companyId = options.companyId || DEFAULT_COMPANY_ID;
+    const candidates = await getProfileCandidates(companyId);
+    const profilePassages =
+      candidates.length > 0 ? selectProfilePassages(candidates, query, { extra: 2 }) : [];
+
+    let docPassages = [];
+    if (search) {
+      docPassages = await search(query, {
+        signal: options?.signal,
+        companyId,
+        ...(options?.pageSize ? { pageSize: options.pageSize } : {}),
+      });
+    } else if (companyId === DEFAULT_COMPANY_ID) {
+      docPassages = samplePassages(query);
+    }
+    return [...profilePassages.slice(0, 3), ...docPassages.slice(0, options?.pageSize || 5)];
+  };
+
+  retriever.clearProfileCache = clearProfileCache;
+  return retriever;
 }

@@ -67,7 +67,12 @@ export function activeSnapshot(summaries, bucket) {
   if (name)
     for (const summary of Array.isArray(summaries) ? summaries : []) {
       if (summary?.status !== 'active' || !summary.fileName || !summary.id) continue;
-      const uri = companyDocumentUri({ bucket: name, id: summary.id, fileName: summary.fileName });
+      const uri = companyDocumentUri({
+        bucket: name,
+        id: summary.id,
+        fileName: summary.fileName,
+        companyId: summary.companyId,
+      });
       const entry = Object.freeze({
         id: summary.id,
         title: summary.title,

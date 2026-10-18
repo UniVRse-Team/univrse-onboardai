@@ -23,6 +23,23 @@ const alignmentKey = {
   'role-contribution': 'roleContribution',
 };
 
+// Which verification activities the served handbook actually holds. A company
+// on the starter pack gets an empty handbook (policies {}, alignment {},
+// responsibilities [], supportRouting null, toolAccessSteps []), so none of
+// these are true for it and its steps render by their own completion instead.
+const isObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+export const hasPolicyActivity = (stepId, content) => isObject(content?.policies?.[stepId]);
+export const hasAlignmentActivity = (stepId, content) =>
+  isObject(content?.alignment?.[alignmentKey[String(stepId).replace('alignment.', '')]]);
+export const hasAccessActivity = (stepId, content) =>
+  Array.isArray(content?.toolAccessSteps) && content.toolAccessSteps.includes(stepId);
+export const hasResponsibilitiesActivity = (content) =>
+  isObject(content?.responsibilities) &&
+  (isObject(content.responsibilities.default) ||
+    Array.isArray(content.responsibilities.default) ||
+    isObject(content.responsibilities.byDepartment));
+export const hasRoutingActivity = (content) => isObject(content?.supportRouting);
+
 const AREA_TITLES = {
   policies: 'Policies & Safe Practices',
   alignment: 'Company Purpose & Alignment',
@@ -39,7 +56,8 @@ export function resolveActivity(id, onboarding, content) {
   const area = onboarding?.areas?.find((a) => a.id === areaOfId);
   const base = { id, areaId: areaOfId, areaTitle: AREA_TITLES[areaOfId] };
 
-  if (id === RESPONSIBILITIES_ACTIVITY)
+  if (id === RESPONSIBILITIES_ACTIVITY) {
+    if (!hasResponsibilitiesActivity(content)) return null;
     return {
       ...base,
       kind: 'checklist',
@@ -49,8 +67,10 @@ export function resolveActivity(id, onboarding, content) {
       requirement: 'Tick every item and save. This is an acknowledgement, not an assessment.',
       mandatory: false,
     };
+  }
   if (id === ROUTING_ACTIVITY) {
     const activity = content?.supportRouting;
+    if (!hasRoutingActivity(content)) return null;
     return {
       ...base,
       kind: 'quiz',
@@ -72,8 +92,13 @@ export function resolveActivity(id, onboarding, content) {
   if (!step) return null;
   const common = { ...base, step, title: step.title, mandatory: step.required !== false };
 
+  // Read-and-confirm steps (no approved quiz or activity) have no page: they are
+  // confirmed from the onboarding page like any setup task.
+  if (areaOfId === 'policies' && step.completion !== 'check') return null;
+  if (areaOfId === 'alignment' && !alignmentKey[id.replace('alignment.', '')]) return null;
   if (areaOfId === 'policies') {
-    const policy = content?.policies?.[id];
+    if (!hasPolicyActivity(id, content)) return null;
+    const policy = content.policies[id];
     return {
       ...common,
       kind: 'policy',
@@ -86,13 +111,14 @@ export function resolveActivity(id, onboarding, content) {
       questions: policy?.quiz?.questions || [],
       passingScore: policy?.quiz?.passingScore,
       requirement: policy?.quiz
-        ? `Acknowledge the policy, then pass the quiz (${policy.quiz.passingScore}% or more). You can retry.`
+        ? `Pass the quiz (${policy.quiz.passingScore}% or more). You can retry.`
         : 'Acknowledge the policy. No approved quiz is configured for it yet.',
     };
   }
   if (areaOfId === 'alignment') {
     const slug = id.replace('alignment.', '');
-    const activity = content?.alignment?.[alignmentKey[slug]];
+    if (!hasAlignmentActivity(id, content)) return null;
+    const activity = content.alignment[alignmentKey[slug]];
     return {
       ...common,
       kind: 'quiz',
@@ -109,7 +135,7 @@ export function resolveActivity(id, onboarding, content) {
     };
   }
   if (areaOfId === 'role-tools') {
-    if (content?.toolAccessSteps?.includes(id))
+    if (hasAccessActivity(id, content))
       return {
         ...common,
         kind: 'access',
@@ -136,15 +162,26 @@ export function resolveActivity(id, onboarding, content) {
       };
     return null;
   }
-  if (id === 'team-support.working-preferences')
-    return {
-      ...common,
-      kind: 'prefs',
-      instructions: step.description,
-      objectives: [],
-      requirement: 'Optional. Skipping never affects your progress.',
-      mandatory: false,
-    };
+  if (areaOfId === 'team-support') {
+    if (id === 'team-support.working-preferences')
+      return {
+        ...common,
+        kind: 'prefs',
+        instructions: step.description,
+        objectives: [],
+        requirement: 'Optional. Skipping never affects your progress.',
+        mandatory: false,
+      };
+    if (step.completion === 'check')
+      return {
+        ...common,
+        kind: 'check',
+        instructions: step.description,
+        objectives: ['Show you understand workplace support and communication.'],
+        requirement: 'Answer the scenario correctly. You can retry.',
+      };
+    return null;
+  }
   return null;
 }
 
@@ -170,5 +207,12 @@ export function activityStatus(activity, records) {
       accessState(activity.step, records?.roleTools?.tools?.[activity.id])
     ];
   if (activity.step?.status === 'done') return 'Completed';
-  return 'Not Started';
+  // Begun but not finished: an acknowledgement, a quiz attempt or locked answers.
+  const key = `${activity.area}/${activity.activityKey}`;
+  const begun =
+    records?.policies?.[activity.id]?.acknowledgedAt ||
+    records?.policies?.[activity.id]?.quiz?.attempts ||
+    records?.alignment?.[activity.activityKey]?.attempts ||
+    Object.keys(records?.sessions?.[key]?.answers || {}).length;
+  return begun || activity.step?.briefed ? 'In Progress' : 'Not Started';
 }

@@ -24,7 +24,7 @@ function fakeAgent(app) {
     ['buddy', 'team-support.company-chat-groups', 'done'],
     ['chat', 'team-support.company-chat-groups', 'done'],
     ['ai practice', 'role-tools.ai-readiness-training', 'done'],
-    ['contract', 'documentation.contract', 'submitted'],
+    ['contract', 'documentation.tax-id-documents', 'submitted'],
     ['handbook', 'policies.employee-handbook', null],
     ['mystery', 'nonsense.step', 'done'],
   ];
@@ -253,7 +253,7 @@ test('"I\'ve met my buddy today": a proposal, nothing written until Approve, the
       (s) => s.id === 'team-support.company-chat-groups',
     );
     assert.deepEqual([chatGroup.status, chatGroup.source], ['done', 'alya-agent']);
-    assert.equal(approved.body.onboarding.nextStep.id, 'documentation.contract');
+    assert.equal(approved.body.onboarding.nextStep.id, 'documentation.tax-id-documents');
     assert.equal(app.firestore.read(`agentActions/${action.id}`).status, 'approved');
     // The reply is a new assistant message; the proposal shows its status.
     opened = (await browser.get(`/api/conversations/${chat.id}`)).body.messages;
@@ -296,32 +296,17 @@ test('"Not yet" leaves the step unchanged and the action cannot be approved late
   });
 });
 
-test('a signed contract is proposed as submitted; a policy step points to the check and marks nothing', async () => {
+test('a document step is never marked through chat; a policy step points to the check and marks nothing', async () => {
   await withAgentApp({}, async (app) => {
     const hr = await app.hrBrowser();
     const { employee, browser } = await app.readyEmployee(hr);
     const chat = (await browser.post('/api/conversations')).body;
     const contract = (await ask(browser, chat.id, 'I signed my contract')).body;
-    assert.deepEqual(
-      [contract.proposedAction.stepId, contract.proposedAction.newStatus],
-      ['documentation.contract', 'submitted'],
-    );
-    assert.equal(
-      contract.answer,
-      'Shall I mark “Sign your employment contract” as submitted? HR then verifies it.',
-    );
-    const approved = await browser.post(`/api/me/agent-actions/${contract.proposedAction.id}`, {
-      decision: 'approve',
-    });
-    const step = approved.body.onboarding.areas[0].steps[0];
-    assert.equal(step.status, 'submitted');
-    assert.equal(approved.body.onboarding.waitingOnHr, 1);
-    // HR still verifies it.
-    const verified = await hr.patch(
-      `/api/hr/employees/${employee.account.id}/onboarding/steps/documentation.contract`,
-      { status: 'done' },
-    );
-    assert.equal(verified.body.areas[0].steps[0].status, 'done');
+    assert.equal(contract.proposedAction, null);
+    assert.match(contract.answer, /upload your document/i);
+    assert.match(contract.answer, /submitted once it is saved/);
+    const saved = app.firestore.read(`onboardingProgress/${employee.account.id}`);
+    assert.equal(saved?.steps?.['documentation.tax-id-documents']?.status, undefined);
 
     const handbook = (await ask(browser, chat.id, "I've read the handbook")).body;
     assert.equal(handbook.proposedAction, null);
@@ -332,7 +317,7 @@ test('a signed contract is proposed as submitted; a policy step points to the ch
     // no for them, so nothing can change.
     const odd = (await ask(browser, chat.id, "I've finished the mystery step")).body;
     assert.equal(odd.proposedAction, null);
-    assert.equal(app.firestore.paths('agentActions/').length, 1);
+    assert.equal(app.firestore.paths('agentActions/').length, 0); // nothing was proposed
   });
 });
 
@@ -392,7 +377,7 @@ test('an expired proposal nobody answered is closed when the employee proposes t
       (await browser.get(`/api/conversations/${chat.id}`)).body.messages[1].proposedAction.status,
       'expired',
     );
-    await ask(browser, chat.id, 'I signed my contract');
+    await ask(browser, chat.id, "I've met my buddy");
     assert.equal(app.firestore.read(`agentActions/${first.id}`).status, 'expired');
     assert.equal(agent.sessions.size, 1); // only the new proposal's session
   });

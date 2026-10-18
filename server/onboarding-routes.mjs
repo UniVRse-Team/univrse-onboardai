@@ -1,6 +1,10 @@
 import { agentActionErrors } from './agent-actions.mjs';
 import { ChatError } from './chat-errors.mjs';
-import { TOOL_ACCESS_STEP_IDS, createTaskVerificationStore } from './task-verification.mjs';
+import {
+  ALIGNMENT_ACTIVITY_STEP_IDS,
+  TOOL_ACCESS_STEP_IDS,
+  createTaskVerificationStore,
+} from './task-verification.mjs';
 import { mountTaskVerificationRoutes } from './task-verification-routes.mjs';
 
 // HTTP routes of the onboarding journey (issues #47-#50, contract v1.1 in
@@ -15,6 +19,13 @@ import { mountTaskVerificationRoutes } from './task-verification-routes.mjs';
 //   hr (role hr):        /api/hr/support-requests*, /api/hr/knowledge-gaps,
 //                        /api/hr/team-insights, /api/hr/employees/:id/onboarding*,
 //                        /api/hr/employees/:id/first-day
+export const ALIGNMENT_STEP_IDS = Object.freeze([
+  'alignment.products-customers',
+  'alignment.mission-values',
+  'alignment.org-structure',
+  'alignment.role-contribution',
+]);
+
 export function mountOnboardingRoutes({
   me,
   hr,
@@ -25,6 +36,7 @@ export function mountOnboardingRoutes({
   gaps,
   actions = null,
   taskVerificationStore = null,
+  accounts = null,
 }) {
   const account = (req) => req.accountSession.account;
   const verifications =
@@ -36,7 +48,7 @@ export function mountOnboardingRoutes({
   // Steps proven by an activity (alignment) or by a coordinator (tool access) are
   // finished only through that verification, never by a direct request here.
   const gated = (stepId) =>
-    TOOL_ACCESS_STEP_IDS.includes(stepId) || stepId.startsWith('alignment.');
+    TOOL_ACCESS_STEP_IDS.includes(stepId) || ALIGNMENT_ACTIVITY_STEP_IDS.includes(stepId);
   const requireNotGated = (req) => {
     if (gated(req.params.stepId))
       throw new ChatError(
@@ -73,7 +85,7 @@ export function mountOnboardingRoutes({
     res.json(await journey.completeAiTraining(account(req), req.body, req.query));
   });
   me.get('/quick-questions', employee, async (req, res) => {
-    res.json(await journey.quickQuestions(account(req)));
+    res.json(await journey.quickQuestions(account(req), { stepId: req.query.stepId }));
   });
   me.get('/first-day', employee, async (req, res) => {
     res.json(await journey.myFirstDay(account(req)));
@@ -95,35 +107,48 @@ export function mountOnboardingRoutes({
     res.json(await actions.decide(account(req), req.params.id, req.body));
   });
 
-  mountTaskVerificationRoutes({ me, hr, employee, hrOnly, journey, store: verifications });
+  mountTaskVerificationRoutes({
+    me,
+    hr,
+    employee,
+    hrOnly,
+    journey,
+    store: verifications,
+    accounts,
+  });
 
   hr.get('/support-requests', hrOnly, async (req, res) => {
-    res.json(await support.hrList());
+    res.json(await support.hrList(req.accountSession));
   });
   hr.patch('/support-requests/:id', hrOnly, async (req, res) => {
     res.json({ request: await support.hrUpdate(req.accountSession, req.params.id, req.body) });
   });
   hr.get('/knowledge-gaps', hrOnly, async (req, res) => {
-    res.json(await gaps.list());
+    res.json(await gaps.list(req.accountSession.account.companyId));
   });
   hr.get('/team-insights', hrOnly, async (req, res) => {
-    res.json(await support.insights());
+    res.json(await support.insights(req.accountSession));
   });
   hr.get('/employees/:id/onboarding', hrOnly, async (req, res) => {
+    if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);
     res.json(await journey.employeeOnboarding(req.params.id));
   });
   hr.get('/employees/:id/ai-proficiency', hrOnly, async (req, res) => {
+    if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);
     res.json(await journey.employeeAiProficiency(req.params.id, req.accountSession, req.query));
   });
   hr.patch('/employees/:id/onboarding/steps/:stepId', hrOnly, async (req, res) => {
+    if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);
     res.json(
       await journey.setEmployeeStep(req.accountSession, req.params.id, req.params.stepId, req.body),
     );
   });
   hr.get('/employees/:id/first-day', hrOnly, async (req, res) => {
+    if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);
     res.json(await journey.employeeFirstDay(req.params.id));
   });
   hr.put('/employees/:id/first-day', hrOnly, async (req, res) => {
+    if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);
     res.json(await journey.putEmployeeFirstDay(req.accountSession, req.params.id, req.body));
   });
 }

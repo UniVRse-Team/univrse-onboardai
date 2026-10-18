@@ -132,3 +132,11 @@ test('moving to another scene is announced in plain words', () => {
   );
   assert.equal(stepAnnouncement(presentation, order, { scene: 4, page: 0 }), '');
 });
+
+test('without a voice the guide advances at reading pace, within limits', async () => {
+  const { autoAdvanceDelay } = await import('../../src/avatar/scene-steps.mjs');
+  assert.equal(autoAdvanceDelay(0), 3500);
+  assert.equal(autoAdvanceDelay(20), 7600);
+  assert.equal(autoAdvanceDelay(20, 2), 3800);
+  assert.equal(autoAdvanceDelay(500), 14000);
+});

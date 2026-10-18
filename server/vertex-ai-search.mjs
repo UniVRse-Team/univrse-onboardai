@@ -1,4 +1,5 @@
 import { createAccessTokenProvider } from './vertex-ai.mjs';
+import { DEFAULT_COMPANY_ID } from './companies.mjs';
 
 // Company passages come from Vertex AI Search (Discovery Engine) chunk search over
 // the documents imported into the data store. REST only; no extra client library.
@@ -45,8 +46,10 @@ export function vertexSearchUrl(config) {
 
 // pageSize: SEARCH_PAGE_SIZE unless the caller asks for another whole number
 // of results (the retrieval allowlist asks for 10, see
-// active-company-documents.mjs).
-export function searchRequestBody(query, { pageSize } = {}) {
+// active-company-documents.mjs). options can also specify companyId.
+export function searchRequestBody(query, options = {}) {
+  const opts = typeof options === 'string' ? { companyId: options } : options || {};
+  const { pageSize, companyId = null } = opts;
   return {
     query,
     pageSize:
@@ -57,6 +60,7 @@ export function searchRequestBody(query, { pageSize } = {}) {
       searchResultMode: 'CHUNKS',
       chunkSpec: { numPreviousChunks: NEIGHBOUR_CHUNKS, numNextChunks: NEIGHBOUR_CHUNKS },
     },
+    ...(companyId ? { filter: `companyId: ANY("${companyId}")` } : {}),
   };
 }
 
@@ -193,13 +197,35 @@ const vertexIdOf = (chunk) => /\/documents\/([^/]+)\/chunks\//.exec(text(chunk?.
 // search returned it (or null), and `vertexId`, the data store document ID
 // from the chunk name (or null). They never leave the server: the workflow and
 // document search copy only the fields they show.
-export function passagesFromSearch(data) {
+export function passagesFromSearch(data, companyId = null, log = null) {
   const seen = new Set(),
     passages = [];
+  let dropped = 0;
   for (const result of Array.isArray(data?.results) ? data.results : []) {
     const chunk = result?.chunk;
     const main = contentOf(chunk);
     if (!main) continue;
+
+    if (companyId) {
+      const structCompany = chunk?.documentMetadata?.structData?.companyId;
+      if (structCompany && structCompany !== companyId) {
+        dropped++;
+        continue;
+      }
+      const uri = String(chunk?.documentMetadata?.uri || '');
+      const match = uri.match(/\/companies\/([^/]+)\//);
+      if (match && match[1] !== companyId) {
+        dropped++;
+        continue;
+      }
+      if (companyId !== DEFAULT_COMPANY_ID) {
+        if (!uri.includes(`/companies/${companyId}/`)) {
+          dropped++;
+          continue;
+        }
+      }
+    }
+
     const document =
       text(result.id) ||
       text(chunk.documentMetadata?.uri) ||
@@ -233,6 +259,9 @@ export function passagesFromSearch(data) {
       vertexId: vertexIdOf(chunk),
     });
   }
+  if (dropped > 0 && log) {
+    log(`Dropped ${dropped} foreign search result(s).`);
+  }
   return passages;
 }
 
@@ -259,8 +288,8 @@ async function googleReason(response) {
   }
 }
 
-// Returns search(query, { signal, pageSize }) -> passages. One bounded request
-// per call and no automatic retries, matching the Gemini client.
+// Returns search(query, { signal, pageSize, companyId }) -> passages. One bounded request per call and
+// no automatic retries, matching the Gemini client.
 export function createVertexSearch({
   config,
   fetchImpl = fetch,
@@ -268,19 +297,26 @@ export function createVertexSearch({
   timeoutMs = SEARCH_TIMEOUT_MS,
   log = (message) => console.warn(message),
 }) {
-  return async function search(query, { signal, pageSize } = {}) {
+  return async function search(query, options = {}) {
+    const {
+      signal,
+      pageSize,
+      companyId = null,
+    } = typeof options === 'object' && options !== null
+      ? options
+      : { signal: undefined, pageSize: undefined, companyId: null };
     // A ref'd timer, not AbortSignal.timeout(): that timer is unref'd, so a pending
     // search would not keep the process alive and could be dropped mid-flight.
     const deadline = new AbortController();
     const timer = setTimeout(() => deadline.abort(), timeoutMs);
     try {
-      return await run(query, signal, deadline.signal, pageSize);
+      return await run(query, signal, deadline.signal, { pageSize, companyId });
     } finally {
       clearTimeout(timer);
     }
   };
 
-  async function run(query, signal, timeout, pageSize) {
+  async function run(query, signal, timeout, { pageSize, companyId } = {}) {
     if (!config?.engine || searchConfigProblem(config))
       throw new CompanySearchError('SEARCH_NOT_CONFIGURED');
     const question = text(query);
@@ -314,7 +350,7 @@ export function createVertexSearch({
       response = await fetchImpl(vertexSearchUrl(config), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(searchRequestBody(question, { pageSize })),
+        body: JSON.stringify(searchRequestBody(question, { pageSize, companyId })),
         signal: bounded,
       });
       if (!response.ok) {
@@ -330,6 +366,6 @@ export function createVertexSearch({
       if (error instanceof CompanySearchError) throw error;
       throw stopped() ?? fail('SEARCH_UNAVAILABLE');
     }
-    return passagesFromSearch(data);
+    return passagesFromSearch(data, companyId, log);
   }
 }

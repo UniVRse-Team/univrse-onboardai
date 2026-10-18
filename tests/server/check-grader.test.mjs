@@ -4,7 +4,7 @@
 // failures. A fake model only; no Google request is made.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { builtInTemplate } from '../../server/onboarding-content.mjs';
+import { templateWithAdditionalPolicies } from './template-fixtures.mjs';
 import { findStep } from '../../server/onboarding-progress.mjs';
 import {
   addressesGrader,
@@ -18,7 +18,8 @@ import {
   verifiedEvidence,
 } from '../../server/check-grader.mjs';
 
-const check = findStep(builtInTemplate('employee'), 'policies.data-protection').step.check;
+const check = findStep(templateWithAdditionalPolicies('employee'), 'policies.data-protection').step
+  .check;
 const good =
   'I would say no and keep the list in our company systems. Customer data is confidential and we may only use it to do our jobs.';
 const output = (

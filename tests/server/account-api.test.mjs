@@ -41,6 +41,8 @@ test('HR signs in with a session cookie that is HttpOnly, SameSite=Strict, /api-
     );
     const body = await response.json();
     assert.deepEqual(Object.keys(body.account).sort(), [
+      'company',
+      'companyId',
       'id',
       'mustChangePassword',
       'role',
@@ -632,5 +634,78 @@ test('account routes reject other origins and report database failures without d
         'Account database request failed: {"operation":"read session","code":"08006"}',
       ),
     );
+  });
+});
+
+test('public company endpoint returns active company and rejects disabled or missing company', async () => {
+  await withApp(async (app) => {
+    const res = await app.browser().get('/api/auth/companies/univrse');
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.company, { id: 'univrse', name: 'UniVRse', status: 'active' });
+
+    const missing = await app.browser().get('/api/auth/companies/nonexistent');
+    assert.equal(missing.status, 404);
+    assert.equal(missing.body.code, 'COMPANY_NOT_FOUND');
+  });
+});
+
+test('admin can create HR accounts and rename companies via CRUD endpoints', async () => {
+  await withApp(async (app) => {
+    await app.store.createAccount({
+      username: 'ADMIN-0001',
+      passwordHash: await app.hashing.hash('synthetic-admin-pass-1'),
+      role: 'admin',
+      mustChangePassword: false,
+      action: 'admin_created',
+      at: app.clock.now(),
+      companyId: null,
+    });
+    const admin = app.browser();
+    const login = await admin.signIn('ADMIN-0001', 'synthetic-admin-pass-1');
+    assert.equal(login.status, 200);
+
+    // 1. Create HR account for company
+    const hrRes = await admin.post('/api/admin/companies/univrse/hr-accounts', {});
+    assert.equal(hrRes.status, 201);
+    assert.match(hrRes.body.hrAccount.username, /^HR-[0-9]{4}$/);
+    assert.equal(hrRes.body.hrAccount.status, 'active');
+    assert.equal(hrRes.body.hrAccount.isDefault, true);
+    assert.ok(hrRes.body.temporaryPassword);
+    assert.equal(hrRes.body.company.defaultHr.username, hrRes.body.hrAccount.username);
+
+    // List HR accounts
+    const listHr = await admin.get('/api/admin/companies/univrse/hr-accounts');
+    assert.equal(listHr.status, 200);
+    assert.ok(listHr.body.hrAccounts.some((a) => a.username === hrRes.body.hrAccount.username));
+
+    // 2. Rename company (Update)
+    const renamed = await admin.patch('/api/admin/companies/univrse', {
+      name: 'UniVRse Global Tech',
+    });
+    assert.equal(renamed.status, 200);
+    assert.equal(renamed.body.company.name, 'UniVRse Global Tech');
+
+    // Verify company list reflects updated name (Read)
+    const companies = await admin.get('/api/admin/companies');
+    assert.equal(companies.status, 200);
+    const found = companies.body.companies.find((c) => c.id === 'univrse');
+    assert.equal(found.name, 'UniVRse Global Tech');
+
+    // Reject empty company name
+    const invalidRename = await admin.patch('/api/admin/companies/univrse', { name: '   ' });
+    assert.equal(invalidRename.status, 400);
+    assert.equal(invalidRename.body.code, 'COMPANY_INVALID');
+  });
+});
+
+test('HR reads company and profile details from /api/hr/company', async () => {
+  await withApp(async (app) => {
+    const hr = await app.hrBrowser();
+    const response = await hr.get('/api/hr/company');
+    assert.equal(response.status, 200);
+    assert.equal(response.body.company.id, 'univrse');
+    assert.equal(response.body.company.name, 'UniVRse');
+    assert.equal(response.body.company.status, 'active');
+    assert.ok(response.body.profile);
   });
 });

@@ -120,7 +120,7 @@ test('events: the confirmation request and the last model text, camelCase and sn
                 originalFunctionCall: {
                   id: 'x',
                   name: 'mark_step',
-                  args: { step_id: 'documentation.contract' },
+                  args: { step_id: 'documentation.tax-id-documents' },
                 },
               },
             },
@@ -131,7 +131,7 @@ test('events: the confirmation request and the last model text, camelCase and sn
   ];
   assert.deepEqual(outcomeOf(snake).confirmation, {
     callId: 'adk-2',
-    stepId: 'documentation.contract',
+    stepId: 'documentation.tax-id-documents',
   });
   // Another tool's confirmation, thoughts and partial chunks are ignored.
   const other = [
@@ -200,7 +200,11 @@ test('ADK API server: session with the account in its state, /run, resume with t
     method: 'POST',
     body: {
       sessionId: started.sessionId,
-      state: { onboardai_account_id: ACCOUNT, onboardai_track: 'intern' },
+      state: {
+        onboardai_account_id: ACCOUNT,
+        onboardai_track: 'intern',
+        onboardai_template_id: 'intern',
+      },
     },
     headers: { 'Content-Type': 'application/json' },
   });
@@ -313,10 +317,14 @@ test('Agent Engine: create_session with state and TTL, streamQuery with snake_ca
   assert.deepEqual(calls[0].body, {
     class_method: 'async_create_session',
     input: {
-      user_id: `employee-${ACCOUNT}`,
       session_id: started.sessionId,
-      state: { onboardai_account_id: ACCOUNT, onboardai_track: 'employee' },
+      state: {
+        onboardai_account_id: ACCOUNT,
+        onboardai_track: 'employee',
+        onboardai_template_id: 'employee',
+      },
       ttl: '86400s',
+      user_id: `employee-${ACCOUNT}`,
     },
   });
   assert.equal(calls[1].url, `${endpoint}:streamQuery?alt=sse`);

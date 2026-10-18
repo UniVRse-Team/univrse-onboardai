@@ -200,6 +200,8 @@ test('replace: 201 with the old entry gone, version 2, the old title kept and on
         status: 'active',
         version: 2,
         supersedes: oldId,
+        companyId: 'univrse',
+        objectName: `${newId}/badges-2026.txt`,
       },
     );
 

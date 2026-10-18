@@ -1,11 +1,14 @@
 import { ChatError } from './chat-errors.mjs';
+import { contentPackOf } from './companies.mjs';
 import {
   ALIGNMENT_ACTIVITIES,
   APPROVED_HANDBOOK_METADATA,
   CONTENT_REQUIREMENTS,
   TOOL_ACCESS_STEP_IDS,
   alignmentPassingScore,
+  answerFeedback,
   gradeQuestions,
+  validAnswer,
   policyPassingScore,
   publicVerificationContent,
   routingQuestions,
@@ -74,23 +77,58 @@ export function mountTaskVerificationRoutes({
   journey,
   store,
   contentSource = createVerificationContentSource(),
+  accounts = null,
 }) {
   const account = (req) => req.accountSession.account;
 
-  // Grades one submission, records the attempt, clears the saved draft and, on a
-  // pass, completes the task. `place` says where the record lives.
-  const submitQuiz = async ({ acc, draftKey, questions, answers, passingScore, place, stepId }) => {
-    const { results, score } = gradeQuestions(questions, answers);
-    const passed = score >= passingScore;
+  // Grades one submission, records the attempt, clears the saved draft and answer
+  // session and, on a pass, completes the task. `place` says where the record
+  // lives. With `fromSession` the answers are the ones already locked one by one
+  // (never the client's), and every question must have been answered. Grading and
+  // the clearing of the session share one transaction, so a double submit records
+  // one attempt: the second finds no session.
+  const submitQuiz = async ({
+    acc,
+    draftKey,
+    questions,
+    answers,
+    passingScore,
+    place,
+    stepId,
+    fromSession = false,
+  }) => {
     const at = new Date().toISOString();
-    let attempts = 0;
+    let attempts = 0,
+      graded,
+      passed = false;
     const saved = await store.saveVerification(acc.id, (v) => {
-      const record = attemptRecord(place.get(v), { score, passingScore, passed, answers, at });
+      let given = answers;
+      if (fromSession) {
+        const session = v.sessions?.[draftKey];
+        if (!session)
+          throw new ChatError(409, 'NO_QUIZ_SESSION', 'This attempt was already submitted.');
+        if (questions.some((question) => !session.answers?.[question.id]))
+          throw new ChatError(409, 'QUIZ_INCOMPLETE', 'Answer every question before finishing.');
+        given = Object.fromEntries(
+          Object.entries(session.answers).map(([id, entry]) => [id, entry.value]),
+        );
+      }
+      graded = gradeQuestions(questions, given);
+      passed = graded.score >= passingScore;
+      const record = attemptRecord(place.get(v), {
+        score: graded.score,
+        passingScore,
+        passed,
+        answers: given,
+        at,
+      });
       place.set(v, record);
       attempts = record.attempts;
       if (v.drafts) delete v.drafts[draftKey];
+      if (v.sessions) delete v.sessions[draftKey];
       return v;
     });
+    const { results, score } = graded;
     const onboarding = passed && stepId ? await journey.verifyStep(acc, stepId) : null;
     return {
       correct: passed,
@@ -98,6 +136,8 @@ export function mountTaskVerificationRoutes({
       score,
       passingScore,
       attempts,
+      correctCount: results.filter((result) => result.correct).length,
+      totalCount: results.length,
       questionResults: results,
       feedback: passed
         ? `Passed with ${score}% (required: ${passingScore}%).`
@@ -107,7 +147,78 @@ export function mountTaskVerificationRoutes({
     };
   };
 
-  me.get('/company-policy-handbook', employee, async (_req, res) => {
+  // The quiz behind an activity, one description for every route: its questions,
+  // pass mark, the onboarding step a pass completes and where its record lives.
+  const resolveQuiz = (areaId, activityId, notes = '') => {
+    const content = contentSource();
+    if (areaId === 'policies') {
+      const quiz = content.policies[activityId]?.quiz;
+      if (!quiz) return null;
+      return {
+        questions: quiz.questions,
+        passingScore: policyPassingScore(),
+        stepId: activityId,
+        place: {
+          get: (v) => v.policies?.[activityId]?.quiz,
+          set: (v, record) => {
+            v.policies = v.policies || {};
+            v.policies[activityId] = { ...(v.policies[activityId] || {}), quiz: record };
+          },
+        },
+      };
+    }
+    if (areaId === 'alignment' && alignmentChecks[activityId]) {
+      const check = alignmentChecks[activityId];
+      return {
+        questions: check.activity.questions,
+        passingScore: alignmentPassingScore(),
+        stepId: check.stepId,
+        place: {
+          get: (v) => v.alignment?.[activityId],
+          set: (v, record) => {
+            v.alignment = v.alignment || {};
+            const kept = notes || v.alignment[activityId]?.notes;
+            v.alignment[activityId] = { ...record, ...(kept ? { notes: kept } : {}) };
+          },
+        },
+      };
+    }
+    if (areaId === 'team-support' && activityId === 'support-routing')
+      return {
+        questions: routingQuestions(content.supportRouting),
+        passingScore: alignmentPassingScore(),
+        stepId: null,
+        place: {
+          get: (v) => v.teamSupport?.routing,
+          set: (v, record) => {
+            v.teamSupport = v.teamSupport || {};
+            v.teamSupport.routing = record;
+          },
+        },
+      };
+    return null;
+  };
+
+  me.get('/company-policy-handbook', employee, async (req, res) => {
+    const acc = account(req);
+    if (contentPackOf(acc.companyId) !== 'univrse') {
+      return res.json({
+        metadata: null,
+        policies: {},
+        alignment: {},
+        responsibilities: [],
+        supportRouting: null,
+        verifiedDirectory: null,
+        toolAccessSteps: [],
+        contentRequirements: [],
+        config: {
+          policyPassingScore: policyPassingScore(),
+          alignmentPassingScore: alignmentPassingScore(),
+          allowRetries: true,
+          maxAttemptsPerDay: 5,
+        },
+      });
+    }
     res.json({
       metadata: APPROVED_HANDBOOK_METADATA,
       ...publicVerificationContent(contentSource()),
@@ -122,8 +233,62 @@ export function mountTaskVerificationRoutes({
 
   me.post('/task-verifications/:areaId/:activityId', employee, async (req, res) => {
     const acc = account(req);
+    if (contentPackOf(acc.companyId) !== 'univrse') {
+      throw new ChatError(404, 'ACTIVITY_NOT_FOUND', 'Verification activity not found.');
+    }
     const { areaId, activityId } = req.params;
     const body = req.body && typeof req.body === 'object' ? req.body : {};
+
+    // One answer at a time. The answer is checked against the server's key and
+    // locked in the saved attempt session: a second request for the same question
+    // returns the first answer's feedback and never records another.
+    if (body.action === 'answer' || body.action === 'finish') {
+      const quiz = resolveQuiz(
+        areaId,
+        activityId,
+        body.action === 'finish' ? text(body.notes, 600) : '',
+      );
+      if (!quiz) throw new ChatError(404, 'ACTIVITY_NOT_FOUND', 'Verification activity not found.');
+      const key = `${areaId}/${activityId}`;
+      if (body.action === 'finish')
+        return res.json(
+          await submitQuiz({
+            acc,
+            draftKey: key,
+            questions: quiz.questions,
+            passingScore: quiz.passingScore,
+            place: quiz.place,
+            stepId: quiz.stepId,
+            fromSession: true,
+          }),
+        );
+      const question = quiz.questions.find((item) => item.id === body.questionId);
+      if (!question) throw new ChatError(404, 'QUESTION_NOT_FOUND', 'Question not found.');
+      if (!validAnswer(question, body.answer))
+        throw new ChatError(400, 'INVALID_ANSWER', 'That answer is not one of the choices.');
+      let locked = false;
+      const at = new Date().toISOString();
+      const saved = await store.saveVerification(acc.id, (v) => {
+        locked = false;
+        v.sessions = v.sessions || {};
+        const session = (v.sessions[key] = v.sessions[key] || { startedAt: at, answers: {} });
+        if (!session.answers[question.id]) {
+          session.answers[question.id] = { value: body.answer, at };
+          locked = true;
+        }
+        return v;
+      });
+      const session = saved.verifications.sessions[key];
+      const entry = session.answers[question.id];
+      return res.json({
+        ...answerFeedback(question, entry.value),
+        selected: entry.value,
+        alreadyAnswered: !locked,
+        answered: quiz.questions.filter((item) => session.answers[item.id]).length,
+        total: quiz.questions.length,
+        attempt: (quiz.place.get(saved.verifications)?.attempts || 0) + 1,
+      });
+    }
 
     // Answers in progress are saved so an employee can leave and come back.
     if (body.action === 'draft') {
@@ -184,28 +349,16 @@ export function mountTaskVerificationRoutes({
             'NO_QUIZ',
             'This policy has no quiz; acknowledging it completes it.',
           );
-        const current = await store.getVerifications(acc.id);
-        if (!current.verifications.policies?.[activityId]?.acknowledgedAt)
-          throw new ChatError(
-            409,
-            'ACKNOWLEDGEMENT_REQUIRED',
-            'Acknowledge that you have read the policy before taking the check.',
-          );
+        const quiz = resolveQuiz('policies', activityId);
         return res.json(
           await submitQuiz({
             acc,
             draftKey: `policies/${activityId}`,
-            questions: policy.quiz.questions,
+            questions: quiz.questions,
             answers: cleanAnswers(body.answers),
-            passingScore: policyPassingScore(),
-            stepId: activityId,
-            place: {
-              get: (v) => v.policies?.[activityId]?.quiz,
-              set: (v, record) => {
-                v.policies = v.policies || {};
-                v.policies[activityId] = { ...(v.policies[activityId] || {}), quiz: record };
-              },
-            },
+            passingScore: quiz.passingScore,
+            stepId: quiz.stepId,
+            place: quiz.place,
           }),
         );
       }
@@ -213,31 +366,18 @@ export function mountTaskVerificationRoutes({
     }
 
     if (areaId === 'alignment') {
-      const check = alignmentChecks[activityId];
-      if (check) {
+      if (alignmentChecks[activityId]) {
         const notes = activityId === 'role-contribution' ? text(body.notes, 600) : '';
+        const quiz = resolveQuiz('alignment', activityId, notes);
         return res.json(
           await submitQuiz({
             acc,
             draftKey: `alignment/${activityId}`,
-            questions: check.activity.questions,
+            questions: quiz.questions,
             answers: cleanAnswers(body.answers),
-            passingScore: alignmentPassingScore(),
-            stepId: check.stepId,
-            place: {
-              get: (v) => v.alignment?.[activityId],
-              set: (v, record) => {
-                v.alignment = v.alignment || {};
-                v.alignment[activityId] = {
-                  ...record,
-                  ...(notes
-                    ? { notes }
-                    : v.alignment[activityId]?.notes
-                      ? { notes: v.alignment[activityId].notes }
-                      : {}),
-                };
-              },
-            },
+            passingScore: quiz.passingScore,
+            stepId: quiz.stepId,
+            place: quiz.place,
           }),
         );
       }
@@ -311,21 +451,16 @@ export function mountTaskVerificationRoutes({
 
     if (areaId === 'team-support') {
       if (activityId === 'support-routing') {
+        const quiz = resolveQuiz('team-support', activityId);
         return res.json(
           await submitQuiz({
             acc,
             draftKey: 'team-support/support-routing',
-            questions: routingQuestions(contentSource().supportRouting),
+            questions: quiz.questions,
             answers: cleanAnswers(body.answers),
-            passingScore: alignmentPassingScore(),
+            passingScore: quiz.passingScore,
             stepId: null,
-            place: {
-              get: (v) => v.teamSupport?.routing,
-              set: (v, record) => {
-                v.teamSupport = v.teamSupport || {};
-                v.teamSupport.routing = record;
-              },
-            },
+            place: quiz.place,
           }),
         );
       }
@@ -367,6 +502,7 @@ export function mountTaskVerificationRoutes({
   // completes an access step; the employee's request alone never does.
   hr.post('/employees/:id/task-verifications/tool-access/:stepId', hrOnly, async (req, res) => {
     const { id, stepId } = req.params;
+    if (accounts) await accounts.getEmployee(req.accountSession, id);
     if (!TOOL_ACCESS_STEP_IDS.includes(stepId))
       throw new ChatError(400, 'TOOL_NOT_FOUND', 'This step does not use an access confirmation.');
     const current = await store.getVerifications(id);
@@ -389,9 +525,10 @@ export function mountTaskVerificationRoutes({
 
   // Pending access requests of one employee, for the coordinator.
   hr.get('/employees/:id/task-verifications', hrOnly, async (req, res) => {
+    if (accounts) await accounts.getEmployee(req.accountSession, req.params.id);
     const saved = await store.getVerifications(req.params.id);
     // Working preferences, drafts and raw answers are the employee's own; HR sees outcomes only.
-    const { drafts: _drafts, ...rest } = saved.verifications;
+    const { drafts: _drafts, sessions: _sessions, ...rest } = saved.verifications;
     const strip = (record) => {
       if (!record || typeof record !== 'object') return record;
       const { lastAnswers: _answers, ...kept } = record;

@@ -23,7 +23,7 @@ export default function ChangePasswordPage({ account, onChangePassword, onSignOu
     summaryRef = useRef(null),
     alive = useRef(true);
   useEffect(() => {
-    document.title = 'Choose a new password · OnboardAi';
+    document.title = 'Choose a new password · Onboard.AI';
     headingRef.current?.focus();
     return () => {
       alive.current = false;

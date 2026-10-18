@@ -90,7 +90,7 @@ test('#51 propose, approve, decline, submitted, policy, cross-account', { skip }
   assert.equal((await stepStatus(a.c, p2.stepId)).s, 'todo', 'still todo');
 
   // 3. contract -> submitted
-  await brief('documentation.contract');
+  await brief('documentation.tax-id-documents');
   r = await ask(a.c, 'I signed my contract');
   const p3 = r.json.proposedAction;
   log('contract', r.status, r.json);

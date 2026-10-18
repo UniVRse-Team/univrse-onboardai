@@ -9,6 +9,8 @@ if (['win32', 'darwin'].includes(process.platform)) {
   if (existsSync('.env')) args.push('--watch-path=.env');
 }
 const localPreview = process.argv.includes('--local-preview');
+// --lan: also answer phones and other devices on the same private network (see the guard).
+const lan = localPreview && process.argv.includes('--lan');
 if (localPreview) {
   const { assertLocalPreview } = await import('./local-preview-guard.mjs');
   assertLocalPreview({ ...process.env, NODE_ENV: process.env.NODE_ENV || 'development' });
@@ -18,7 +20,11 @@ const preview = spawn(process.execPath, args, {
   stdio: 'inherit',
   windowsHide: true,
   env: localPreview
-    ? { ...process.env, NODE_ENV: process.env.NODE_ENV || 'development' }
+    ? {
+        ...process.env,
+        NODE_ENV: process.env.NODE_ENV || 'development',
+        ...(lan ? { PREVIEW_LAN: '1' } : {}),
+      }
     : process.env,
 });
 preview.on('error', () => {

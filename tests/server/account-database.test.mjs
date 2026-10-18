@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { migrate, migrationFiles, migrationsDirectory } from '../../server/database-migrations.mjs';
 import { createAccountStore } from '../../server/account-store.mjs';
+import { DEFAULT_COMPANY_ID } from '../../server/companies.mjs';
 import { createTestDatabase } from './test-database.mjs';
 
 const at = new Date('2026-10-15T01:00:00.000Z');
@@ -15,6 +16,7 @@ test('migrations are plain SQL files, applied once and recorded in schema_migrat
     '002_account_event_labels.sql',
     '003_employee_id_counters.sql',
     '004_departments.sql',
+    '005_companies.sql',
   ];
   assert.deepEqual(migrationFiles(), all);
   const sql = readFileSync(join(migrationsDirectory, '001_accounts.sql'), 'utf8');
@@ -41,6 +43,7 @@ test('migrations are plain SQL files, applied once and recorded in schema_migrat
       .map((c) => c.column_name)
       .sort();
   assert.deepEqual(of('accounts'), [
+    'company_id',
     'created_at',
     'created_by',
     'failed_attempts',
@@ -61,6 +64,7 @@ test('migrations are plain SQL files, applied once and recorded in schema_migrat
   assert.deepEqual(of('account_events'), [
     'action',
     'actor_id',
+    'company_id',
     'created_at',
     'detail',
     'id',
@@ -121,6 +125,7 @@ test('the account store maps a taken username to 409 and database failures to a 
     mustChangePassword: true,
     action: 'employee_created',
     at,
+    companyId: DEFAULT_COMPANY_ID,
   };
   const account = await store.createAccount(fields);
   assert.equal(account.username, 'EMP-0001');

@@ -1,3 +1,4 @@
+import { DEFAULT_COMPANY_ID } from './companies.mjs';
 import { createStorageCall } from './firestore-client.mjs';
 import { journeyCollections } from './onboarding-collections.mjs';
 import { companyDay } from './onboarding-progress.mjs';
@@ -25,7 +26,7 @@ export function normaliseTopic(topic) {
 }
 
 // The gap document for one unanswered question.
-export function gapDocument({ question, topic, track, nearestSource }, at) {
+export function gapDocument({ question, topic, track, nearestSource, companyId }, at) {
   return {
     questionRedacted: redactPersonalData(String(question || ''))
       .replace(/\s+/g, ' ')
@@ -37,6 +38,7 @@ export function gapDocument({ question, topic, track, nearestSource }, at) {
       nearestSource && typeof nearestSource.title === 'string' && nearestSource.title
         ? { title: nearestSource.title, heading: String(nearestSource.heading || '') }
         : null,
+    companyId: companyId || DEFAULT_COMPANY_ID,
     createdDay: companyDay(at),
   };
 }
@@ -119,10 +121,12 @@ export function createKnowledgeGaps({ firestore, now = () => new Date(), timeout
         const db = await database();
         await db.collection(journeyCollections.knowledgeGaps).doc().set(gapDocument(gap, now()));
       }),
-    list: () =>
+    list: (companyId = null) =>
       guarded('read knowledge gaps', async () => {
         const db = await database();
-        const found = await db.collection(journeyCollections.knowledgeGaps).limit(readCap).get();
+        let query = db.collection(journeyCollections.knowledgeGaps);
+        if (companyId) query = query.where('companyId', '==', companyId);
+        const found = await query.limit(readCap).get();
         const docs = found.docs.map((doc) => doc.data());
         return { total: docs.length, groups: groupGaps(docs) };
       }),

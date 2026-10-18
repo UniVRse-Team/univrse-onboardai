@@ -8,6 +8,7 @@ import {
 
 const hr = { id: '1', username: 'H', role: 'hr', mustChangePassword: false };
 const emp = { id: '2', username: 'E', role: 'employee', mustChangePassword: false };
+const admin = { id: '0', username: 'A', role: 'admin', mustChangePassword: false };
 
 test('accounts off: only the sign-in page exists, there is no guest fallback', () => {
   for (const path of ['/', '/login'])
@@ -16,17 +17,18 @@ test('accounts off: only the sign-in page exists, there is no guest fallback', (
     assert.deepEqual(routeDecision({ accounts: false, path }), { type: 'redirect', to: '/login' });
 });
 test('landing page follows account.role', () => {
-  assert.equal(landingPath(hr), '/hr');
-  assert.equal(landingPath(emp), '/dashboard');
+  assert.equal(landingPath(hr), '/hr/univrse');
+  assert.equal(landingPath({ ...hr, companyId: 'acme' }), '/hr/acme');
+  assert.equal(landingPath(emp), '/onboarding');
 });
 test('signed-in users leave the login pages by role', () => {
   assert.deepEqual(routeDecision({ accounts: true, account: hr, path: '/login' }), {
     type: 'redirect',
-    to: '/hr',
+    to: '/hr/univrse',
   });
   assert.deepEqual(routeDecision({ accounts: true, account: emp, path: '/' }), {
     type: 'redirect',
-    to: '/dashboard',
+    to: '/onboarding',
   });
 });
 test('signed-out visitors to any app route go to /login', () => {
@@ -41,6 +43,7 @@ test('signed-out visitors to any app route go to /login', () => {
     '/employee/0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f',
     '/guest/employee',
     '/hr',
+    '/hr/univrse',
     '/hr-preview',
     '/nowhere',
   ])
@@ -48,23 +51,40 @@ test('signed-out visitors to any app route go to /login', () => {
   for (const path of ['/', '/login'])
     assert.deepEqual(routeDecision({ accounts: true, path }), { type: 'render' });
 });
-test('an employee only sees employee pages; HR only sees /hr', () => {
-  for (const path of ['/dashboard', '/onboarding', '/alya', '/support', '/profile'])
+test('an employee only sees employee pages; HR only sees their company workspace', () => {
+  for (const path of ['/onboarding', '/alya', '/support', '/profile'])
     assert.deepEqual(routeDecision({ accounts: true, account: emp, path }), { type: 'render' });
   assert.deepEqual(routeDecision({ accounts: true, account: emp, path: '/hr' }), {
     type: 'redirect',
-    to: '/dashboard',
+    to: '/onboarding',
+  });
+  assert.deepEqual(routeDecision({ accounts: true, account: emp, path: '/hr/univrse' }), {
+    type: 'redirect',
+    to: '/onboarding',
+  });
+  // The retired /dashboard page is the same as My onboarding.
+  assert.deepEqual(routeDecision({ accounts: true, account: emp, path: '/dashboard' }), {
+    type: 'redirect',
+    to: '/onboarding',
   });
   assert.deepEqual(routeDecision({ accounts: true, account: hr, path: '/hr' }), {
+    type: 'redirect',
+    to: '/hr/univrse',
+  });
+  assert.deepEqual(routeDecision({ accounts: true, account: hr, path: '/hr/univrse' }), {
     type: 'render',
+  });
+  assert.deepEqual(routeDecision({ accounts: true, account: hr, path: '/hr/other-company' }), {
+    type: 'redirect',
+    to: '/hr/univrse',
   });
   assert.deepEqual(routeDecision({ accounts: true, account: hr, path: '/alya' }), {
     type: 'redirect',
-    to: '/hr',
+    to: '/hr/univrse',
   });
   assert.deepEqual(routeDecision({ accounts: true, account: emp, path: '/signup' }), {
     type: 'redirect',
-    to: '/dashboard',
+    to: '/onboarding',
   });
 });
 test('forced change shows before anything else', () => {
@@ -73,9 +93,13 @@ test('forced change shows before anything else', () => {
     assert.equal(routeDecision({ accounts: true, account, path }).type, 'change-password');
 });
 test('every route waits for the session check', () => {
-  for (const path of ['/login', '/hr', '/alya', '/dashboard'])
+  for (const path of ['/login', '/hr', '/hr/univrse', '/alya', '/dashboard'])
     assert.equal(routeDecision({ accounts: null, path }).type, 'loading');
   assert.equal(routeDecision({ accounts: true, loading: true, path: '/hr' }).type, 'loading');
+  assert.equal(
+    routeDecision({ accounts: true, loading: true, path: '/hr/univrse' }).type,
+    'loading',
+  );
 });
 test('app-wide account actions', () => {
   assert.deepEqual(afterAccountAction('sign-in', emp), {
@@ -87,6 +111,97 @@ test('app-wide account actions', () => {
   assert.equal(r.account.mustChangePassword, true);
   assert.equal(r.to, null);
   assert.equal(afterAccountAction('change-password', null).account, null);
+  assert.deepEqual(afterAccountAction('company-account-required', admin), {
+    account: admin,
+    to: '/admin',
+    notice: false,
+  });
+  assert.deepEqual(afterAccountAction('admin-role-required', emp), {
+    account: emp,
+    to: '/onboarding',
+    notice: false,
+  });
+  assert.deepEqual(afterAccountAction('admin-role-required', hr), {
+    account: hr,
+    to: '/hr/univrse',
+    notice: false,
+  });
+});
+
+test('admin routing: admin lands on /admin and may only use /admin and /admin/companies/:id', () => {
+  assert.equal(landingPath(admin), '/admin');
+  assert.deepEqual(routeDecision({ accounts: true, account: admin, path: '/admin' }), {
+    type: 'render',
+  });
+  assert.deepEqual(
+    routeDecision({ accounts: true, account: admin, path: '/admin/companies/univrse' }),
+    { type: 'render' },
+  );
+  assert.deepEqual(routeDecision({ accounts: true, account: admin, path: '/dashboard' }), {
+    type: 'redirect',
+    to: '/admin',
+  });
+  assert.deepEqual(routeDecision({ accounts: true, account: admin, path: '/hr' }), {
+    type: 'redirect',
+    to: '/admin',
+  });
+  assert.deepEqual(routeDecision({ accounts: true, account: admin, path: '/hr/univrse' }), {
+    type: 'redirect',
+    to: '/admin',
+  });
+  assert.deepEqual(routeDecision({ accounts: true, account: admin, path: '/login' }), {
+    type: 'redirect',
+    to: '/admin',
+  });
+  assert.deepEqual(
+    routeDecision({ accounts: true, account: admin, path: '/admin/companies/bad@id' }),
+    { type: 'redirect', to: '/admin' },
+  );
+});
+
+test('non-admin visiting /admin routes is redirected to landing', () => {
+  assert.deepEqual(routeDecision({ accounts: true, account: hr, path: '/admin' }), {
+    type: 'redirect',
+    to: '/hr/univrse',
+  });
+  assert.deepEqual(
+    routeDecision({ accounts: true, account: hr, path: '/admin/companies/univrse' }),
+    { type: 'redirect', to: '/hr/univrse' },
+  );
+  assert.deepEqual(routeDecision({ accounts: true, account: emp, path: '/admin' }), {
+    type: 'redirect',
+    to: '/onboarding',
+  });
+  assert.deepEqual(
+    routeDecision({ accounts: true, account: emp, path: '/admin/companies/univrse' }),
+    { type: 'redirect', to: '/onboarding' },
+  );
+});
+
+test('signed-out visitors on /admin see admin sign-in, and /admin/* redirects to /admin', () => {
+  assert.deepEqual(routeDecision({ accounts: true, path: '/admin' }), { type: 'render' });
+  assert.deepEqual(routeDecision({ accounts: true, path: '/admin/companies/univrse' }), {
+    type: 'redirect',
+    to: '/admin',
+  });
+});
+
+test('company tenant URLs: signed-out visitors see company sign-in; signed-in users go to landing', () => {
+  for (const path of ['/companies/univrse', '/companies/univrse/login', '/companies/acme-corp']) {
+    assert.deepEqual(routeDecision({ accounts: true, path }), { type: 'render' });
+    assert.deepEqual(routeDecision({ accounts: true, account: emp, path }), {
+      type: 'redirect',
+      to: '/onboarding',
+    });
+    assert.deepEqual(routeDecision({ accounts: true, account: hr, path }), {
+      type: 'redirect',
+      to: '/hr/univrse',
+    });
+    assert.deepEqual(routeDecision({ accounts: true, account: admin, path }), {
+      type: 'redirect',
+      to: '/admin',
+    });
+  }
 });
 
 import { sessionCheckOutcome } from '../../src/access/account-routing.mjs';

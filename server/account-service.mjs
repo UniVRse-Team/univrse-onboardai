@@ -1,9 +1,18 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { accountErrors, departmentErrors } from './account-errors.mjs';
+import { accountErrors, companyErrors, departmentErrors } from './account-errors.mjs';
 import { createAccountStore, createDatabasePool } from './account-store.mjs';
 import { formatEmployeeId, prefixPattern, reservedPrefix } from './employee-ids.mjs';
 import { createFirestoreClient } from './firestore-client.mjs';
 import { trackOf } from './onboarding-content.mjs';
+import {
+  DEFAULT_COMPANY_ID,
+  companyIdFromName,
+  companyIdPattern,
+  companyNameMax,
+  isCompanyId,
+} from './companies.mjs';
+import { departments as defaultDepartments } from './departments.mjs';
+import { presentCompanyProfile, validateCompanyProfile } from './company-profile.mjs';
 import {
   asProfileStorageError,
   createProfileStore,
@@ -68,6 +77,11 @@ const selfView = (row, expiresAt) => ({
   role: row.role,
   mustChangePassword: row.must_change_password,
   sessionExpiresAt: iso(expiresAt),
+  companyId: row.company_id ?? null,
+  company:
+    row.company_id && row.company_name
+      ? { id: row.company_id, name: row.company_name, status: row.company_status || 'active' }
+      : null,
 });
 // What HR sees about an employee account. Never the password hash.
 export const accountView = (row, at) => ({
@@ -81,6 +95,31 @@ export const accountView = (row, at) => ({
   createdAt: iso(row.created_at),
   updatedAt: iso(row.updated_at),
   lastSignInAt: iso(row.last_sign_in_at),
+});
+
+export const companySummaryView = (row) => ({
+  id: row.id,
+  name: row.name,
+  status: row.status,
+  defaultHr: row.default_hr_account_id
+    ? { id: row.default_hr_account_id, username: row.default_hr_username || null }
+    : null,
+  counts: row.counts || { hr: 0, employees: 0 },
+  profileVersion: Number(row.profile_version) || 0,
+  profileUpdatedAt: iso(row.profile_updated_at),
+  createdAt: iso(row.created_at),
+  updatedAt: iso(row.updated_at),
+});
+
+export const hrAccountView = (row, at, defaultHrId = null) => ({
+  id: row.id,
+  username: row.username,
+  status: row.status,
+  mustChangePassword: row.must_change_password,
+  locked: lockedAt(row, at),
+  createdAt: iso(row.created_at),
+  lastSignInAt: iso(row.last_sign_in_at),
+  isDefault: defaultHrId !== null ? row.id === defaultHrId : Boolean(row.is_default),
 });
 
 // Builds the real backends from accountSettings(env).
@@ -117,9 +156,14 @@ export function createAccountService({
     if (problem) throw accountErrors.passwordRejected(problem);
   };
   const validId = (id) => typeof id === 'string' && uuidPattern.test(id);
-  async function employeeOrThrow(id) {
+  const resolveCompanyScope = (actor) => {
+    if (typeof actor === 'string' && isCompanyId(actor)) return actor;
+    const fromActor = actor?.account?.companyId ?? actor?.companyId;
+    return fromActor || DEFAULT_COMPANY_ID;
+  };
+  async function employeeOrThrow(companyId, id) {
     if (!validId(id)) throw accountErrors.employeeNotFound();
-    const row = await store.employee(id);
+    const row = await store.employee(companyId, id);
     if (!row) throw accountErrors.employeeNotFound();
     return row;
   }
@@ -139,6 +183,7 @@ export function createAccountService({
       return null;
     }
     if (row.status !== 'active') return null;
+    if (row.role !== 'admin' && row.company_status !== 'active') return null;
     return { account: selfView(row, row.session_expires_at), tokenHash: hash };
   }
 
@@ -158,7 +203,11 @@ export function createAccountService({
     const row = usernamePattern.test(name) ? await store.findForSignIn(name) : null;
     const matches = await hashing.verify(password, row?.password_hash ?? (await hashing.dummy()));
     const at = now();
-    const usable = row && row.status === 'active' && !lockedAt(row, at);
+    const usable =
+      row &&
+      row.status === 'active' &&
+      !lockedAt(row, at) &&
+      (row.role === 'admin' || row.company_status === 'active');
     if (!usable || !matches) {
       // The same database work for every failure: the update matches no row
       // for an unknown ID or a disabled or locked account.
@@ -223,8 +272,9 @@ export function createAccountService({
 
   // Each item: { account, profile (the list summary), track }. The track is
   // job.track, or employee when the profile has none.
-  async function listEmployees() {
-    const rows = await store.listEmployees();
+  async function listEmployees(actor = null) {
+    const companyId = resolveCompanyScope(actor);
+    const rows = await store.listEmployees(companyId);
     const found = await profiles.readMany(rows.map((row) => row.id));
     const at = now();
     return rows.map((row) => ({
@@ -234,8 +284,10 @@ export function createAccountService({
     }));
   }
 
-  async function getEmployee(id) {
-    const row = await employeeOrThrow(id);
+  async function getEmployee(actorOrId, maybeId) {
+    const [actor, id] = maybeId !== undefined ? [actorOrId, maybeId] : [null, actorOrId];
+    const companyId = resolveCompanyScope(actor);
+    const row = await employeeOrThrow(companyId, id);
     return { account: accountView(row, now()), profile: await profiles.read(row.id) };
   }
 
@@ -252,22 +304,24 @@ export function createAccountService({
   });
   // The count after a change is a courtesy: a Firestore failure there must not
   // turn a change that already succeeded into an error.
-  async function employeesIn(name) {
+  async function employeesIn(name, companyId) {
     try {
-      return (await profiles.countByDepartment()).get(name) || 0;
+      return (await profiles.countByDepartment(companyId)).get(name) || 0;
     } catch {
       return 0;
     }
   }
   // The names of the active departments, the choices for a new hire and the
   // autofill's enum.
-  async function activeDepartmentNames() {
-    return (await store.activeDepartments()).map((row) => row.name);
+  async function activeDepartmentNames(actor = null) {
+    const companyId = resolveCompanyScope(actor);
+    return (await store.activeDepartments(companyId)).map((row) => row.name);
   }
   // Active departments first, then by name, with their employee counts.
-  async function listDepartments() {
-    const rows = await store.listDepartments();
-    const counts = await profiles.countByDepartment();
+  async function listDepartments(actor = null) {
+    const companyId = resolveCompanyScope(actor);
+    const rows = await store.listDepartments(companyId);
+    const counts = await profiles.countByDepartment(companyId);
     return rows.map((row) => departmentView(row, counts.get(row.name) || 0));
   }
   function departmentFields(body, keys) {
@@ -294,8 +348,9 @@ export function createAccountService({
     const unknown = Object.keys(body).filter((key) => !['name', 'prefix'].includes(key));
     if (unknown.length) throw departmentErrors.invalid([]);
     const values = departmentFields(body, ['name', 'prefix']);
-    const row = await store.createDepartment(actor.account.id, values, now());
-    return { department: departmentView(row, await employeesIn(row.name)) };
+    const companyId = resolveCompanyScope(actor);
+    const row = await store.createDepartment(actor.account.id, companyId, values, now());
+    return { department: departmentView(row, await employeesIn(row.name, companyId)) };
   }
   // PATCH /api/hr/departments/:id { name?, prefix?, archived? } ->
   // { department, updatedProfiles }. A new name is also written to every
@@ -308,17 +363,19 @@ export function createAccountService({
       throw departmentErrors.invalid([]);
     const changes = departmentFields(body, keys);
     if (!validId(id)) throw departmentErrors.notFound();
+    const companyId = resolveCompanyScope(actor);
     let renamed = null;
     let result;
     try {
       result = await store.updateDepartment(
         actor.account.id,
+        companyId,
         id,
         changes,
         now(),
         async (before, after) => {
           if (before.name !== after.name)
-            renamed = await profiles.renameDepartment(before.name, after.name);
+            renamed = await profiles.renameDepartment(before.name, after.name, companyId);
         },
       );
     } catch (error) {
@@ -327,7 +384,7 @@ export function createAccountService({
       throw error;
     }
     if (!result) throw departmentErrors.notFound();
-    const employees = renamed ? renamed.updated : await employeesIn(result.after.name);
+    const employees = renamed ? renamed.updated : await employeesIn(result.after.name, companyId);
     return {
       department: departmentView(result.after, employees),
       updatedProfiles: renamed ? renamed.updated : 0,
@@ -336,24 +393,11 @@ export function createAccountService({
 
   // The one way an employee account is created: HR's "Add employee account"
   // (POST /api/hr/employees) and the employee form import approval (#27).
-  //   profile: ProfileInput. job.department must be the name of an active
-  //            department (the departments table); its prefix decides the
-  //            Employee ID.
-  //   actorId: the HR account creating the employee (created_by, the event
-  //            actor and the profile's updatedBy).
-  // Resolves to { employee: { account: EmployeeAccount, profile: Profile },
-  // temporaryPassword }, or throws 400 PROFILE_INVALID, 503
-  // ACCOUNTS_UNAVAILABLE, 503 PROFILE_STORAGE_UNAVAILABLE or 504
-  // PROFILE_STORAGE_TIMEOUT. The server picks the Employee ID (the department's
-  // next number) and a generated temporary password with a forced change. The
-  // password is returned to the caller only: it is stored as its scrypt hash
-  // and never logged. Consistent across both stores: Postgres insert, then the
-  // Firestore profile, then the commit; a failed profile write rolls the account
-  // back (its number stays used). If the commit itself fails after the profile
-  // was written, the orphaned profile is removed (best effort).
-  async function createEmployeeAccount({ profile: input, actorId } = {}) {
+  async function createEmployeeAccount({ profile: input, actorId, companyId = null } = {}) {
     if (!validId(actorId)) throw new TypeError('createEmployeeAccount needs the HR actorId.');
-    const active = await store.activeDepartments();
+    const actorRow = await store.findById(actorId);
+    const company = companyId ?? actorRow?.company_id ?? DEFAULT_COMPANY_ID;
+    const active = await store.activeDepartments(company);
     const profile = validateProfile(input, { activeDepartments: active.map((row) => row.name) });
     const prefix = active.find((row) => row.name === profile.job.department).prefix;
     const temporaryPassword = generatePassword();
@@ -364,12 +408,20 @@ export function createAccountService({
         saved = null;
       try {
         const row = await store.createEmployee(
-          { prefix, passwordHash, createdBy: actorId, at },
+          {
+            prefix,
+            role: 'employee',
+            action: 'employee_created',
+            passwordHash,
+            createdBy: actorId,
+            at,
+            companyId: company,
+          },
           async (account) => {
             if (passwordProblem(temporaryPassword, account.username))
               throw new Error('The generated password does not meet the password rules.');
             createdId = account.id;
-            saved = await profiles.write(account.id, profile, actorId, at);
+            saved = await profiles.write(account.id, profile, actorId, at, company);
           },
         );
         return { employee: { account: accountView(row, at), profile: saved }, temporaryPassword };
@@ -387,7 +439,11 @@ export function createAccountService({
   async function createEmployee(actor, body) {
     if (!isPlainObject(body) || Object.keys(body).some((key) => key !== 'profile'))
       throw accountErrors.employeeInvalid();
-    return createEmployeeAccount({ profile: body.profile, actorId: actor.account.id });
+    return createEmployeeAccount({
+      profile: body.profile,
+      actorId: actor.account.id,
+      companyId: resolveCompanyScope(actor),
+    });
   }
 
   // A department that is not active is accepted only when it is the one already
@@ -395,10 +451,11 @@ export function createAccountService({
   // editable.
   async function replaceProfile(actor, id, body) {
     if (!validId(id)) throw accountErrors.employeeNotFound();
+    const companyId = resolveCompanyScope(actor);
     const job = isPlainObject(body?.profile) ? body.profile.job : undefined;
     const requested =
       isPlainObject(job) && typeof job.department === 'string' ? job.department.trim() : '';
-    const activeDepartments = await activeDepartmentNames();
+    const activeDepartments = await activeDepartmentNames(companyId);
     const keepDepartment = activeDepartments.includes(requested)
       ? undefined
       : ((await profiles.read(id))?.job.department ?? '');
@@ -407,11 +464,12 @@ export function createAccountService({
     let saved = null;
     const row = await store.employeeChange(
       actor.account.id,
+      companyId,
       id,
       'profile_updated',
       at,
       async () => {
-        saved = await profiles.write(id, profile, actor.account.id, at);
+        saved = await profiles.write(id, profile, actor.account.id, at, companyId);
       },
     );
     if (!row) throw accountErrors.employeeNotFound();
@@ -419,10 +477,12 @@ export function createAccountService({
   }
 
   async function resetPassword(actor, id, body) {
-    const row = await employeeOrThrow(id);
+    const companyId = resolveCompanyScope(actor);
+    const row = await employeeOrThrow(companyId, id);
     checkPassword(body?.temporaryPassword, row.username);
     const updated = await store.resetPassword(
       actor.account.id,
+      companyId,
       id,
       await hashing.hash(body.temporaryPassword),
       now(),
@@ -434,30 +494,26 @@ export function createAccountService({
   async function setStatus(actor, id, body) {
     if (!['active', 'disabled'].includes(body?.status)) throw accountErrors.statusInvalid();
     if (!validId(id)) throw accountErrors.employeeNotFound();
-    const updated = await store.setStatus(actor.account.id, id, body.status, now());
+    const companyId = resolveCompanyScope(actor);
+    const updated = await store.setStatus(actor.account.id, companyId, id, body.status, now());
     if (!updated) throw accountErrors.employeeNotFound();
     return { account: accountView(updated, now()) };
   }
 
-  // Deletes an employee's personal data, then the account. eraseChats(owner)
-  // removes the account's chats, checkpoints and support preferences from the
-  // chat store; eraseAgentSessions(accountId), when given, the checklist
-  // agent's sessions (#51). The account is signed out first, Firestore is
-  // cleaned next (every step is safe to repeat), and only then is the PostgreSQL account deleted,
-  // so a Firestore failure leaves the account in place and a retry finishes the
-  // job. HR accounts are never deleted here (404 EMPLOYEE_NOT_FOUND).
+  // Deletes an employee's personal data, then the account.
   async function deleteEmployee(actor, id, { eraseChats, eraseAgentSessions = null }) {
-    const row = await employeeOrThrow(id);
-    await store.endEmployeeSessions(row.id);
+    const companyId = resolveCompanyScope(actor);
+    const row = await employeeOrThrow(companyId, id);
+    await store.endEmployeeSessions(companyId, row.id);
     try {
       await eraseChats(`account:${row.id}`);
     } catch (error) {
       throw asProfileStorageError(error);
     }
-    // The checklist agent's sessions (best effort; it never throws).
+    // The checklist agent's sessions (#51); never fails the deletion.
     if (eraseAgentSessions) await eraseAgentSessions(row.id);
     await profiles.removeAccountData(row.id);
-    const deleted = await store.deleteEmployee(actor.account.id, row.id, now());
+    const deleted = await store.deleteEmployee(actor.account.id, companyId, row.id, now());
     if (!deleted) throw accountErrors.employeeNotFound();
   }
 
@@ -467,9 +523,11 @@ export function createAccountService({
   // to what during() returned; 404 EMPLOYEE_NOT_FOUND for an unknown or HR id.
   async function recordEmployeeChange(actor, id, action, during, detail = null) {
     if (!validId(id)) throw accountErrors.employeeNotFound();
+    const companyId = resolveCompanyScope(actor);
     let result;
     const row = await store.employeeChange(
       actor.account.id,
+      companyId,
       id,
       action,
       now(),
@@ -485,7 +543,260 @@ export function createAccountService({
   // An HR change that is not about one employee (the company library), with
   // its audit row; see store.recordEvent. Resolves to what during() returned.
   const recordEvent = (actor, action, detail, during) =>
-    store.recordEvent(actor.account.id, action, now(), detail, during);
+    store.recordEvent(actor.account.id, resolveCompanyScope(actor), action, now(), detail, during);
+
+  function checkCompanyName(raw) {
+    if (raw === undefined || raw === null) return { problem: 'required' };
+    if (typeof raw !== 'string') return { problem: 'invalid_format' };
+    const value = raw.trim();
+    if (!value) return { problem: 'required' };
+    if ([...value].length > companyNameMax) return { problem: 'too_long' };
+    if (controlCharacters.test(value)) return { problem: 'invalid_format' };
+    return { value };
+  }
+
+  function checkCompanyId(raw) {
+    if (raw === undefined || raw === null) return { problem: 'required' };
+    if (typeof raw !== 'string') return { problem: 'invalid_format' };
+    const value = raw.trim();
+    if (!value) return { problem: 'required' };
+    if (value.length > 32) return { problem: 'too_long' };
+    if (!companyIdPattern.test(value)) return { problem: 'invalid_format' };
+    return { value };
+  }
+
+  async function listCompanies() {
+    const rows = await store.listCompanies();
+    return { companies: rows.map(companySummaryView) };
+  }
+
+  async function getCompany(companyId) {
+    if (!isCompanyId(companyId)) throw companyErrors.notFound();
+    const row = await store.company(companyId);
+    if (!row) throw companyErrors.notFound();
+    return { company: companySummaryView(row) };
+  }
+
+  async function createCompany(actor, body) {
+    if (!isPlainObject(body)) throw companyErrors.invalid([]);
+    const unknown = Object.keys(body).filter((key) => !['name', 'id'].includes(key));
+    if (unknown.length) throw companyErrors.invalid([]);
+    const problems = [];
+    const checkedName = checkCompanyName(body.name);
+    if (checkedName.problem) problems.push({ field: 'name', problem: checkedName.problem });
+    let ids = null;
+    if (body.id !== undefined) {
+      const checkedId = checkCompanyId(body.id);
+      if (checkedId.problem) problems.push({ field: 'id', problem: checkedId.problem });
+      else ids = [checkedId.value];
+    }
+    if (problems.length) throw companyErrors.invalid(problems);
+    const name = checkedName.value;
+    if (!ids) {
+      const base = companyIdFromName(name);
+      ids = [base, ...Array.from({ length: 8 }, (_, i) => `${base}-${i + 2}`)];
+    }
+    const at = now();
+    const createdId = await store.createCompany(
+      actor.account.id,
+      { ids, name },
+      at,
+      defaultDepartments,
+    );
+    return getCompany(createdId);
+  }
+
+  async function renameCompany(actor, companyId, body) {
+    if (!isPlainObject(body)) throw companyErrors.invalid([]);
+    const unknown = Object.keys(body).filter((key) => key !== 'name');
+    if (unknown.length) throw companyErrors.invalid([]);
+    const checkedName = checkCompanyName(body.name);
+    if (checkedName.problem)
+      throw companyErrors.invalid([{ field: 'name', problem: checkedName.problem }]);
+    if (!isCompanyId(companyId)) throw companyErrors.notFound();
+    const renamed = await store.renameCompany(
+      actor.account.id,
+      companyId,
+      checkedName.value,
+      now(),
+    );
+    if (!renamed) throw companyErrors.notFound();
+    return getCompany(companyId);
+  }
+
+  async function setCompanyStatus(actor, companyId, body) {
+    if (!isPlainObject(body) || !['active', 'disabled'].includes(body.status))
+      throw companyErrors.statusInvalid();
+    if (!isCompanyId(companyId)) throw companyErrors.notFound();
+    const updated = await store.setCompanyStatus(actor.account.id, companyId, body.status, now());
+    if (!updated) throw companyErrors.notFound();
+    return getCompany(companyId);
+  }
+
+  async function companyProfile(companyId) {
+    if (!isCompanyId(companyId)) throw companyErrors.notFound();
+    const row = await store.companyProfile(companyId);
+    if (!row) throw companyErrors.notFound();
+    return {
+      profile: presentCompanyProfile(row.profile),
+      version: row.version,
+      updatedAt: iso(row.updatedAt),
+      updatedBy: row.updatedBy,
+    };
+  }
+
+  async function saveCompanyProfile(actor, companyId, body) {
+    if (!isCompanyId(companyId)) throw companyErrors.notFound();
+    if (!isPlainObject(body))
+      throw companyProfileErrors.invalid([{ field: 'profile', problem: 'not_object' }]);
+    if (typeof body.version !== 'number' || !Number.isInteger(body.version) || body.version < 0)
+      throw companyProfileErrors.conflict();
+    const profile = validateCompanyProfile(body.profile);
+    const same = (stored) =>
+      JSON.stringify(presentCompanyProfile(stored)) === JSON.stringify(profile);
+    const at = now();
+    const saved = await store.saveCompanyProfile(
+      actor.account.id,
+      companyId,
+      profile,
+      body.version,
+      at,
+      same,
+    );
+    if (!saved) throw companyErrors.notFound();
+    return companyProfile(companyId);
+  }
+
+  async function listCompanyHr(companyId) {
+    if (!isCompanyId(companyId)) throw companyErrors.notFound();
+    const comp = await store.company(companyId);
+    if (!comp) throw companyErrors.notFound();
+    const rows = await store.listCompanyHr(companyId);
+    const at = now();
+    return {
+      hrAccounts: rows.map((row) => hrAccountView(row, at, comp.default_hr_account_id)),
+    };
+  }
+
+  async function createCompanyHr(actor, companyId, body) {
+    if (!isCompanyId(companyId)) throw companyErrors.notFound();
+    const comp = await store.company(companyId);
+    if (!comp) throw companyErrors.notFound();
+    if (body !== undefined && body !== null) {
+      if (!isPlainObject(body)) throw companyErrors.hrAccountInvalid();
+      const unknown = Object.keys(body).filter((key) => key !== 'makeDefault');
+      if (unknown.length) throw companyErrors.hrAccountInvalid();
+      if (body.makeDefault !== undefined && typeof body.makeDefault !== 'boolean')
+        throw companyErrors.hrAccountInvalid();
+    }
+    const makeDefault =
+      body?.makeDefault !== undefined ? body.makeDefault : !Boolean(comp.default_hr_account_id);
+    const temporaryPassword = generatePassword();
+    const passwordHash = await hashing.hash(temporaryPassword);
+    const at = now();
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const row = await store.createNumbered(
+          {
+            prefix: 'HR',
+            role: 'hr',
+            action: 'hr_account_created',
+            passwordHash,
+            createdBy: actor.account.id,
+            at,
+            companyId,
+          },
+          async (account, query) => {
+            if (passwordProblem(temporaryPassword, account.username))
+              throw new Error('The generated password does not meet the password rules.');
+            if (makeDefault) {
+              await store.setDefaultHr(actor.account.id, companyId, account.id, at, query);
+            }
+          },
+        );
+        const latestCompany = await getCompany(companyId);
+        return {
+          hrAccount: hrAccountView(row, at, latestCompany.company.defaultHr?.id),
+          temporaryPassword,
+          company: latestCompany.company,
+        };
+      } catch (error) {
+        if (error?.code === 'USERNAME_TAKEN') {
+          if (attempt >= employeeIdAttempts) throw accountErrors.unavailable();
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
+  async function setDefaultHr(actor, companyId, body) {
+    if (!isCompanyId(companyId)) throw companyErrors.notFound();
+    if (!isPlainObject(body) || !validId(body.accountId)) throw companyErrors.hrAccountNotFound();
+    const result = await store.setDefaultHr(actor.account.id, companyId, body.accountId, now());
+    if (result === 'company') throw companyErrors.notFound();
+    if (result === 'account') throw companyErrors.hrAccountNotFound();
+    return getCompany(companyId);
+  }
+
+  async function resetHrPasswordByAdmin(actor, companyId, accountId) {
+    if (!isCompanyId(companyId)) throw companyErrors.notFound();
+    if (!validId(accountId)) throw companyErrors.hrAccountNotFound();
+    const temporaryPassword = generatePassword();
+    const passwordHash = await hashing.hash(temporaryPassword);
+    const at = now();
+    const result = await store.resetHrPasswordByAdmin(
+      actor.account.id,
+      companyId,
+      accountId,
+      passwordHash,
+      at,
+    );
+    if (result === 'company') throw companyErrors.notFound();
+    if (result === 'account') throw companyErrors.hrAccountNotFound();
+    return {
+      hrAccount: hrAccountView(result.account, at, result.isDefault ? result.account.id : null),
+      temporaryPassword,
+    };
+  }
+
+  async function listAdminEvents(query = {}) {
+    if (!isPlainObject(query)) throw companyErrors.eventsQueryInvalid();
+    const keys = Object.keys(query);
+    if (keys.some((k) => !['companyId', 'before', 'limit'].includes(k)))
+      throw companyErrors.eventsQueryInvalid();
+    let companyId = null;
+    if (query.companyId !== undefined && query.companyId !== '') {
+      if (!isCompanyId(query.companyId)) throw companyErrors.eventsQueryInvalid();
+      companyId = query.companyId;
+    }
+    let before = null;
+    if (query.before !== undefined && query.before !== '') {
+      if (!/^\d+$/.test(String(query.before))) throw companyErrors.eventsQueryInvalid();
+      before = String(query.before);
+    }
+    let limit = 50;
+    if (query.limit !== undefined && query.limit !== '') {
+      if (!/^\d+$/.test(String(query.limit))) throw companyErrors.eventsQueryInvalid();
+      limit = Number(query.limit);
+      if (limit < 1 || limit > 100) throw companyErrors.eventsQueryInvalid();
+    }
+    const rows = await store.listAdminEvents({ companyId, before, limit });
+    const events = rows.map((row) => ({
+      id: String(row.id),
+      action: row.action,
+      createdAt: iso(row.created_at),
+      companyId: row.company_id ?? null,
+      actor: row.actor_id ? { id: row.actor_id, username: row.actor_username || null } : null,
+      target: row.target_id ? { id: row.target_id, username: row.target_username || null } : null,
+      targetLabel: row.target_label || null,
+      detail: row.detail || null,
+    }));
+    return {
+      events,
+      nextBefore: events.length === limit ? events[events.length - 1].id : null,
+    };
+  }
 
   return {
     sessionMs,
@@ -508,6 +819,20 @@ export function createAccountService({
     deleteEmployee,
     recordEmployeeChange,
     recordEvent,
+    listCompanies,
+    getCompany,
+    createCompany,
+    renameCompany,
+    setCompanyStatus,
+    companyProfile,
+    saveCompanyProfile,
+    listCompanyHr,
+    createCompanyHr,
+    setDefaultHr,
+    resetHrPasswordByAdmin,
+    listAdminEvents,
+    store,
+    profiles,
     close: async () => {
       await Promise.allSettled([store.close?.(), profiles.close?.()]);
     },

@@ -51,7 +51,9 @@ export default function DepartmentField({
       >
         <option value="">
           {departments
-            ? departmentPlaceholder
+            ? departments.length === 0
+              ? 'Add a department in Settings first'
+              : departmentPlaceholder
             : loadError
               ? 'Departments unavailable'
               : 'Loading departments…'}

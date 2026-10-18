@@ -32,6 +32,7 @@ test('employee uploads, HR reviews, owner reads remarks, resubmits; other employ
     const item = created.body.submission;
     assert.equal(item.employeeId, owner.employee.account.username);
     assert.notEqual(item.employeeName, 'Spoofed');
+    assert.equal((await owner.browser.get(path)).body.available, true);
     assert.equal((await other.browser.get(path)).body.submissions.length, 0);
     for (const suffix of ['', '/file'])
       assert.equal((await other.browser.get(`${path}/${item.id}${suffix}`)).status, 404);
@@ -79,7 +80,7 @@ test('file validation rejects spoofed, empty, oversized, invalid and dangerous n
     ['fake.png', content],
     ['x.svg', content],
     ['empty.pdf', Buffer.alloc(0)],
-    ['large.pdf', Buffer.alloc(5 * 1024 * 1024 + 1)],
+    ['large.pdf', Buffer.alloc(25 * 1024 * 1024 + 1)],
     ['../x.pdf', content],
     ['x.docx', Buffer.from('PK not a document')],
   ])
@@ -91,13 +92,15 @@ test('file validation rejects spoofed, empty, oversized, invalid and dangerous n
   );
 });
 
-test('unconfigured private storage never reports a successful upload', async () => {
+test('unconfigured private storage reports available: false and never reports a successful upload', async () => {
   const app = await startAccountsApp();
   try {
     const hr = await app.hrBrowser();
     const employee = await app.readyEmployee(hr);
+    const listing = await employee.browser.get(path);
+    assert.equal(listing.body.available, false);
+    assert.equal(listing.body.submissions.length, 0);
     assert.equal((await upload(employee.browser)).status, 503);
-    assert.equal((await employee.browser.get(path)).body.submissions.length, 0);
   } finally {
     await app.close();
   }
@@ -141,12 +144,12 @@ test('dashboard uploads bind to an actual documentation step and resubmissions c
       assert.equal((await upload(owner.browser, { stepId })).status, 400);
     }
     const created = await upload(owner.browser, {
-      stepId: 'documentation.contract',
+      stepId: 'documentation.employee-information-form',
       title: 'Spoofed title',
     });
     assert.equal(created.status, 201, created.text);
     const record = created.body.submission;
-    assert.equal(record.stepId, 'documentation.contract');
+    assert.equal(record.stepId, 'documentation.employee-information-form');
     assert.notEqual(record.title, 'Spoofed title');
     assert.equal(record.title, record.stepTitle);
     await hr.patch(`${hrPath}/${record.id}`, {
@@ -171,6 +174,131 @@ test('dashboard uploads bind to an actual documentation step and resubmissions c
     assert.equal(corrected.status, 201, corrected.text);
     assert.equal(corrected.body.submission.stepId, record.stepId);
     assert.equal(corrected.body.submission.status, 'Pending Review');
+  } finally {
+    await app.close();
+  }
+});
+
+const stepStatus = async (browser, stepId) =>
+  (await browser.get('/api/me/onboarding')).body.areas
+    .find((a) => a.id === 'documentation')
+    .steps.find((s) => s.id === stepId);
+const uploadStep = (browser, stepId, name = 'doc.pdf') =>
+  browser.upload(
+    path + '?' + new URLSearchParams({ type: 'Employment Documents', title: 'Doc', stepId }),
+    content,
+    name,
+  );
+
+test('a failed upload or save never changes a step or its progress', async () => {
+  const files = createMemorySubmissionFiles();
+  const app = await startAccountsApp({ submissionFiles: files });
+  try {
+    const hr = await app.hrBrowser();
+    const { browser } = await app.readyEmployee(hr);
+    const stepId = 'documentation.employee-information-form';
+    // The file store fails: nothing is submitted.
+    const put = files.put;
+    files.put = async () => {
+      throw new Error('storage down');
+    };
+    const failed = await uploadStep(browser, stepId);
+    assert.ok(failed.status >= 400, failed.text);
+    files.put = put;
+    assert.equal((await browser.get(path)).body.submissions.length, 0);
+    assert.equal((await stepStatus(browser, stepId)).status, 'todo');
+    // A file the server rejects (wrong content for its type) changes nothing.
+    const bad = await browser.upload(
+      path + '?' + new URLSearchParams({ type: 'Employment Documents', title: 'x', stepId }),
+      Buffer.from('not a pdf'),
+      'fake.pdf',
+    );
+    assert.ok(bad.status >= 400);
+    assert.equal((await stepStatus(browser, stepId)).status, 'todo');
+    const onboarding = (await browser.get('/api/me/onboarding')).body;
+    assert.deepEqual([onboarding.percent, onboarding.waitingOnHr], [0, 0]);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a saved document completes its task, a lost sync heals, and saved progress is never reset', async () => {
+  const app = await startAccountsApp({ submissionFiles: createMemorySubmissionFiles() });
+  try {
+    const hr = await app.hrBrowser();
+    const { browser, employee } = await app.readyEmployee(hr);
+    const id = employee.account.id;
+    const stepId = 'documentation.tax-id-documents';
+    const progress = `onboardingProgress/${id}`;
+    const writeStep = (status, source) => {
+      const current = app.firestore.read(progress) || { accountId: id, steps: {} };
+      app.firestore.write(progress, {
+        ...current,
+        steps: {
+          ...current.steps,
+          [stepId]: { status, source, updatedAt: new Date().toISOString() },
+        },
+      });
+    };
+    const onboarding = async () => (await browser.get('/api/me/onboarding')).body;
+    // A brand-new employee: 0% and every task to do. Reading changes nothing.
+    const fresh = await onboarding();
+    const documentation = fresh.areas.find((a) => a.id === 'documentation');
+    assert.deepEqual([documentation.percent, documentation.done], [0, 0]);
+    assert.ok(documentation.steps.every((s) => s.status === 'todo'));
+    assert.equal(app.firestore.read(progress), undefined);
+    // Saved progress from before (an HR verification, or a step waiting on HR) stands.
+    writeStep('done', 'hr');
+    assert.equal((await stepStatus(browser, stepId)).status, 'done');
+    writeStep('submitted', 'employee');
+    assert.equal((await stepStatus(browser, stepId)).status, 'submitted');
+    writeStep('todo', 'employee');
+    // A saved document completes its task; a lost sync is applied on the next read.
+    const uploaded = await uploadStep(browser, stepId);
+    assert.equal(uploaded.status, 201);
+    writeStep('todo', 'employee'); // the sync after the upload was lost
+    assert.equal((await stepStatus(browser, stepId)).status, 'done');
+    // A later HR review changes nothing for the employee.
+    await hr.patch(`${hrPath}/${uploaded.body.submission.id}`, {
+      status: 'Rejected',
+      remarks: 'Blurry.',
+      revision: 1,
+    });
+    assert.equal((await stepStatus(browser, stepId)).status, 'done');
+  } finally {
+    await app.close();
+  }
+});
+
+test('only HR reviews, and the review states are one-way; none of it moves the employee step', async () => {
+  const app = await startAccountsApp({ submissionFiles: createMemorySubmissionFiles() });
+  try {
+    const hr = await app.hrBrowser();
+    const owner = await app.readyEmployee(hr);
+    const other = await app.readyEmployee(hr);
+    const created = await uploadStep(owner.browser, 'documentation.employee-information-form');
+    const target = `${hrPath}/${created.body.submission.id}`;
+    for (const browser of [owner.browser, other.browser, app.browser()]) {
+      const refused = await browser.patch(target, { status: 'Approved', revision: 1 });
+      assert.ok([401, 403].includes(refused.status), String(refused.status));
+    }
+    const done = async () =>
+      (await stepStatus(owner.browser, 'documentation.employee-information-form')).status;
+    assert.equal(await done(), 'done'); // saved = submitted
+    assert.equal((await hr.patch(target, { status: 'Under Review', revision: 1 })).status, 200);
+    const rejected = await hr.patch(target, {
+      status: 'Rejected',
+      remarks: 'Blurry.',
+      revision: 2,
+    });
+    assert.equal(rejected.body.submission.reviewedBy.length > 0, true);
+    assert.equal(await done(), 'done');
+    assert.equal((await hr.patch(target, { status: 'Approved', revision: 3 })).status, 409);
+    // Another employee's step is untouched.
+    assert.equal(
+      (await stepStatus(other.browser, 'documentation.employee-information-form')).status,
+      'todo',
+    );
   } finally {
     await app.close();
   }

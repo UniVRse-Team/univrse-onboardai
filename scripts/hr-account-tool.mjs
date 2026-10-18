@@ -63,11 +63,12 @@ export function parsePipedInput(text) {
 export async function readHrCredentials({
   stdin = process.stdin,
   stdout = process.stdout,
+  idLabel = 'HR ID',
   passwordLabel = 'Password',
 } = {}) {
   if (stdin.isTTY) {
     const terminal = prompter(stdin, stdout);
-    const username = await terminal.ask('HR ID: ');
+    const username = await terminal.ask(`${idLabel}: `);
     const password = await terminal.ask(`${passwordLabel}: `, { secret: true });
     const confirmation = await terminal.ask(`${passwordLabel} again: `, { secret: true });
     terminal.close();
@@ -86,7 +87,7 @@ export async function readHrCredentials({
 export function checkHrCredentials({ username, password, confirmation }) {
   const id = String(username || '').trim();
   if (!usernamePattern.test(id))
-    throw new Error('Use an HR ID of 3 to 32 letters, numbers, dots, hyphens or underscores.');
+    throw new Error('Use an ID of 3 to 32 letters, numbers, dots, hyphens or underscores.');
   const problem = passwordProblem(password, id);
   if (problem) throw new Error(problem);
   if (password !== confirmation) throw new Error('The two passwords do not match.');
@@ -136,22 +137,72 @@ export async function resetHrAccountPassword(
   }
 }
 
+export async function createAdminAccount(
+  store,
+  entered,
+  { hash = hashPassword, at = new Date() } = {},
+) {
+  const username = checkHrCredentials(entered);
+  try {
+    const account = await store.createAccount({
+      username,
+      passwordHash: await hash(entered.password),
+      role: 'admin',
+      mustChangePassword: false,
+      createdBy: null,
+      action: 'admin_created',
+      at,
+      companyId: null,
+    });
+    return { ok: true, message: `Created Admin account ${account.username} (${account.id}).` };
+  } catch (error) {
+    if (error.code === 'USERNAME_TAKEN')
+      return { ok: false, message: 'That Admin ID is already in use.' };
+    return { ok: false, message: `The Admin account could not be created. ${databaseHelp}` };
+  }
+}
+
+export async function resetAdminAccountPassword(
+  store,
+  entered,
+  { hash = hashPassword, at = new Date() } = {},
+) {
+  const username = checkHrCredentials(entered);
+  try {
+    const account = await store.resetHrPassword(username, await hash(entered.password), at, {
+      role: 'admin',
+    });
+    if (!account) return { ok: false, message: 'No Admin account with that ID.' };
+    return {
+      ok: true,
+      message: `Reset the password for Admin account ${account.username}. Its sessions have ended and any lock is cleared.`,
+    };
+  } catch {
+    return { ok: false, message: `The password could not be reset. ${databaseHelp}` };
+  }
+}
+
 // The command-line flow shared by both scripts.
-export async function runHrCommand({ command, action, passwordLabel }) {
+export async function runHrCommand({
+  command,
+  action,
+  idLabel = 'HR ID',
+  passwordLabel = 'Password',
+}) {
   const stop = (message) => {
     console.error(message);
     process.exit(1);
   };
   if (process.argv.length > 2)
     stop(
-      `npm run ${command} takes no arguments. It asks for the HR ID and password, or reads them from piped input.`,
+      `npm run ${command} takes no arguments. It asks for the ID and password, or reads them from piped input.`,
     );
   if (existsSync('.env')) process.loadEnvFile('.env');
   const databaseUrl = (process.env.DATABASE_URL || '').trim();
   if (!databaseUrl) stop('Set DATABASE_URL in .env first (see .env.example).');
   let entered;
   try {
-    entered = await readHrCredentials({ passwordLabel });
+    entered = await readHrCredentials({ idLabel, passwordLabel });
     checkHrCredentials(entered);
   } catch (error) {
     stop(error.message);

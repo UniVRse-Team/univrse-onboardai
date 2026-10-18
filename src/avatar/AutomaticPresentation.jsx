@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from '../portal/Icon';
 import ClothingScene from './ClothingPresentation';
 import OnboardingIllustration from './OnboardingIllustration';
@@ -6,6 +6,7 @@ import AutomaticCaption from './AutomaticCaption';
 import { presentationSceneAt } from './answer-presentation.mjs';
 import { canConfirmRead } from './briefing-flow.mjs';
 import {
+  autoAdvanceDelay,
   nextStep,
   previousStep,
   sceneOrder,
@@ -51,17 +52,28 @@ export default function AutomaticPresentation({
   onReplay,
   voiceEnabled,
   finishReading = null,
+  // While no voice is playing, and none has played for this answer, the guide moves on by
+  // itself at reading pace. A voice that plays takes over; after it, the reader steps.
+  autoAdvance = true,
 }) {
   // Voice-led position, read from the audio player's clock.
   const [position, setPosition] = useState({ index: -1, character: 0, started: false });
   // Reader-led position when there is no voice to follow.
   const [step, setStep] = useState(firstStep),
     [pageCounts, setPageCounts] = useState({}),
-    [announcement, setAnnouncement] = useState('');
+    [announcement, setAnnouncement] = useState(''),
+    [manual, setManual] = useState(false),
+    [heardVoice, setHeardVoice] = useState(false),
+    [stalled, setStalled] = useState(false);
+  const heard = useRef(false);
   const order = sceneOrder(presentation);
   useEffect(() => {
-    // Starting, stopping or interrupting the voice resets the guide to its start.
-    setStep(firstStep);
+    // Starting the voice begins the guide again. When a voice that really played ends, the
+    // guide rests on its last scene instead of jumping back to the first.
+    setStep(
+      !active && heard.current ? { scene: Math.max(0, order.length - 1), page: 999 } : firstStep,
+    );
+    setManual(false);
     setAnnouncement('');
     setPosition({ index: -1, character: 0, started: false });
     if (!active) return;
@@ -69,6 +81,11 @@ export default function AutomaticPresentation({
     function follow() {
       // null while the next sentence buffers or sound is blocked: hold the scene.
       const character = speechRef.current?.getProgress();
+      // Audio really playing (not just starting, nor failed): the voice leads from now on.
+      if (character != null) {
+        heard.current = true;
+        setHeardVoice(true);
+      }
       if (character != null)
         setPosition((previous) => {
           const next = presentationSceneAt(presentation, character);
@@ -81,6 +98,16 @@ export default function AutomaticPresentation({
     follow();
     return () => cancelAnimationFrame(frame);
   }, [presentation, speechRef, active]);
+  // A voice that never starts (blocked, still buffering or failed) must not freeze the guide.
+  useEffect(() => {
+    if (!active || position.started) {
+      setStalled(false);
+      return;
+    }
+    const timer = setTimeout(() => setStalled(true), 3500);
+    return () => clearTimeout(timer);
+  }, [active, position.started]);
+  const led = active && !stalled;
   const countPages = useCallback(
     (index, count) =>
       setPageCounts((previous) =>
@@ -89,7 +116,7 @@ export default function AutomaticPresentation({
     [],
   );
   const current = shownScene(presentation, {
-    voiceLed: active,
+    voiceLed: led,
     started: position.started,
     spokenIndex: position.index,
     step,
@@ -98,11 +125,27 @@ export default function AutomaticPresentation({
   const bounds = stepBounds(step, order, pageCounts);
   // A briefing read without voice is confirmed on its last page only.
   const canFinish =
-    !!finishReading &&
-    !active &&
-    canConfirmRead({ voiceAvailable: false, step, order, pageCounts });
+    !!finishReading && !led && canConfirmRead({ voiceAvailable: false, step, order, pageCounts });
   const pages = pageCounts[current] || 1;
+  // Without a voice the guide advances at reading pace, so nobody has to press Next.
+  // Choosing a step by hand takes over; reduced motion never auto-advances.
+  useEffect(() => {
+    if (!autoAdvance || led || heardVoice || manual || reducedMotion || bounds.last) return;
+    const scene = presentation.scenes[order[step.scene]];
+    const words = String(scene?.body || '')
+      .split(/\s+/)
+      .filter(Boolean).length;
+    const perPage = Math.max(1, pageCounts[order[step.scene]] || 1);
+    const wait = autoAdvanceDelay(words, perPage);
+    const timer = setTimeout(() => {
+      const next = nextStep(step, order, pageCounts);
+      setStep(next);
+      if (next.scene !== step.scene) setAnnouncement(stepAnnouncement(presentation, order, next));
+    }, wait);
+    return () => clearTimeout(timer);
+  }, [autoAdvance, led, heardVoice, manual, reducedMotion, step, pageCounts, presentation]);
   function move(next) {
+    setManual(true);
     setStep(next);
     if (next.scene !== step.scene) setAnnouncement(stepAnnouncement(presentation, order, next));
   }
@@ -111,7 +154,7 @@ export default function AutomaticPresentation({
       className={
         'automatic-presentation' +
         (reducedMotion ? ' is-calm' : '') +
-        (active ? ' is-voice-led' : ' is-stepping')
+        (led ? ' is-voice-led' : ' is-stepping')
       }
       aria-label="Visual guide"
       data-presentation-kind={presentation.kind}
@@ -120,7 +163,7 @@ export default function AutomaticPresentation({
         if (!scene.visible) return null;
         const Scene = scene.garments?.length ? ClothingScene : OnboardingScene;
         const shown = current === index;
-        const caption = active
+        const caption = led
           ? {
               character:
                 shown && position.started ? Math.max(0, position.character - scene.start) : 0,
@@ -136,7 +179,7 @@ export default function AutomaticPresentation({
           />
         );
       })}
-      {active && position.started && current >= 0 && (
+      {led && position.started && current >= 0 && (
         <div className="automatic-sequence" aria-hidden="true">
           <span className="automatic-voice-dot" />
           <span>ALYA EXPLAINS</span>
@@ -150,7 +193,7 @@ export default function AutomaticPresentation({
           </span>
         </div>
       )}
-      {!active && order.length > 0 && (
+      {!led && order.length > 0 && (
         <div className="automatic-steps">
           {voiceEnabled && !finishReading && (
             <button type="button" className="automatic-listen" onClick={onReplay}>
@@ -158,37 +201,40 @@ export default function AutomaticPresentation({
               <span>Listen again</span>
             </button>
           )}
-          <div className="automatic-step-nav" role="group" aria-label="Step through the guide">
-            <button
-              type="button"
-              className="automatic-step-previous"
-              aria-label="Previous step"
-              disabled={bounds.first}
-              onClick={() => move(previousStep(step, order, pageCounts))}
-            >
-              <Icon name="chevron" size={15} />
-              <span>Previous</span>
-            </button>
-            <span className="automatic-step-count">
-              {step.scene + 1} / {order.length}
-              {pages > 1 && (
-                <small>
-                  {' '}
-                  · part {Math.min(step.page, pages - 1) + 1} of {pages}
-                </small>
-              )}
-            </span>
-            <button
-              type="button"
-              className="automatic-step-next"
-              aria-label="Next step"
-              disabled={bounds.last}
-              onClick={() => move(nextStep(step, order, pageCounts))}
-            >
-              <span>Next</span>
-              <Icon name="chevron" size={15} />
-            </button>
-          </div>
+          {/* The guide moves by itself; only with reduced motion (no auto-advance) is it stepped by hand. */}
+          {reducedMotion && (
+            <div className="automatic-step-nav" role="group" aria-label="Step through the guide">
+              <button
+                type="button"
+                className="automatic-step-previous"
+                aria-label="Previous step"
+                disabled={bounds.first}
+                onClick={() => move(previousStep(step, order, pageCounts))}
+              >
+                <Icon name="chevron" size={15} />
+                <span>Previous</span>
+              </button>
+              <span className="automatic-step-count">
+                {step.scene + 1} / {order.length}
+                {pages > 1 && (
+                  <small>
+                    {' '}
+                    · part {Math.min(step.page, pages - 1) + 1} of {pages}
+                  </small>
+                )}
+              </span>
+              <button
+                type="button"
+                className="automatic-step-next"
+                aria-label="Next step"
+                disabled={bounds.last}
+                onClick={() => move(nextStep(step, order, pageCounts))}
+              >
+                <span>Next</span>
+                <Icon name="chevron" size={15} />
+              </button>
+            </div>
+          )}
           {canFinish && (
             <button
               type="button"
@@ -203,7 +249,7 @@ export default function AutomaticPresentation({
         </div>
       )}
       <p className="automatic-announcement" role="status">
-        {active ? '' : announcement}
+        {led ? '' : announcement}
       </p>
     </section>
   );

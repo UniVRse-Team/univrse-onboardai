@@ -48,7 +48,7 @@ test('approved content overrides the defaults and invalid parts are ignored', ()
   assert.equal(warnings.length, 4);
   assert.deepEqual(content.responsibilities.byDepartment.Finance, ['Do b']);
   // the invalid contact list left the built-in directory in place
-  assert.ok(content.directory.contacts.some((c) => c.email === 'it-help@univrse.example'));
+  assert.ok(content.directory.contacts.some((c) => c.email === 'it-help@company.example'));
 
   const view = publicVerificationContent(content);
   assert.equal(view.policies['policies.responsible-ai'].quiz, null);

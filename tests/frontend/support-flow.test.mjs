@@ -240,12 +240,12 @@ test('real API payload shapes: stored assistant messages and chat responses', ()
 test('the briefing hand-off round-trips, and each page takes only its own kinds', () => {
   const storage = memoryStorage();
   // Dashboard -> Alya: "Ask Alya" on a step with a briefing (#66).
-  saveHandoff(storage, briefingHandoff('documentation.contract'));
+  saveHandoff(storage, briefingHandoff('documentation.tax-id-documents'));
   assert.equal(takeHandoff(storage), null, 'a chips-only reader leaves it in place');
   assert.ok(storage.data.has(handoffKey));
   assert.deepEqual(takeHandoff(storage, ['chip', 'briefing']), {
     kind: 'briefing',
-    stepId: 'documentation.contract',
+    stepId: 'documentation.tax-id-documents',
   });
   assert.equal(storage.data.has(handoffKey), false);
   assert.equal(takeHandoff(storage, ['chip', 'briefing']), null, 'read once');

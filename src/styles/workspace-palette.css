@@ -319,3 +319,22 @@
     font-size: 34px;
   }
 }
+
+/* Softer corners on the navigation and the main panels. */
+.uv-portal .uv-navigation {
+  border: 1px solid #486078;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.uv-portal .fp-hero,
+.uv-portal .fp-area,
+.uv-portal .fp-card,
+.uv-portal .fp-next {
+  border-radius: 12px;
+}
+.uv-portal .fp-area {
+  overflow: hidden;
+}
+.uv-portal .fp-document {
+  border-radius: 10px;
+}

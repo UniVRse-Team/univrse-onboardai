@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { DEFAULT_COMPANY_ID } from './companies.mjs';
 import { ChatError } from './chat-errors.mjs';
 import {
   documentTypes,
@@ -31,6 +32,18 @@ export async function validateSubmissionFile(name, bytes) {
   return fileTypes[ext];
 }
 
+// The newest submission of each documentation step: that one decides the step.
+export function latestByStep(submissions) {
+  const latest = {};
+  for (const item of submissions)
+    if (item.stepId && (!latest[item.stepId] || item.submittedAt > latest[item.stepId].submittedAt))
+      latest[item.stepId] = item;
+  return latest;
+}
+// A submission is reviewed once: Pending Review -> Under Review -> a decision.
+// Approved and Rejected are final; a rejected document is replaced by a resubmission.
+const decided = ['Approved', 'Rejected'];
+
 export function createDocumentSubmissions({
   firestore,
   files,
@@ -48,13 +61,41 @@ export function createDocumentSubmissions({
     if (!validId(id)) throw notFound();
     const snapshot = await (await collection()).doc(id).get();
     const data = snapshot.exists ? snapshot.data() : null;
-    if (!data || (account.role !== 'hr' && data.employeeAccountId !== account.id)) throw notFound();
+    if (!data) throw notFound();
+    if (account.role !== 'hr' && data.employeeAccountId !== account.id) throw notFound();
+    if (account.companyId && data.companyId && data.companyId !== account.companyId)
+      throw notFound();
     return data;
   }
+  const sync = async (accountId) => {
+    // Step progress follows the reviews. A failed sync is healed by the next read.
+    try {
+      await onboarding?.syncDocuments?.(accountId);
+    } catch {
+      // The submission and review are saved; progress catches up on the next read.
+    }
+  };
+  async function ownSubmissions(accountId) {
+    const snapshot = await (await collection()).where('employeeAccountId', '==', accountId).get();
+    return snapshot.docs.map((doc) => doc.data());
+  }
   return {
+    // { [stepId]: status of the step's latest submission }, for step progress.
+    async statusesFor(accountId) {
+      return Object.fromEntries(
+        Object.entries(latestByStep(await ownSubmissions(accountId))).map(([id, item]) => [
+          id,
+          item.status,
+        ]),
+      );
+    },
     async list(account) {
       let query = await collection();
-      if (account.role !== 'hr') query = query.where('employeeAccountId', '==', account.id);
+      if (account.role !== 'hr') {
+        query = query.where('employeeAccountId', '==', account.id);
+      } else if (account.companyId) {
+        query = query.where('companyId', '==', account.companyId);
+      }
       const snapshot = await query.get();
       return {
         submissions: snapshot.docs
@@ -79,12 +120,21 @@ export function createDocumentSubmissions({
           ?.steps.find((item) => item.id === stepId);
         if (!step) throw fail(400, 'Choose a documentation step from your onboarding plan.');
       }
+      let previous = null;
       if (resubmissionOf) {
-        const previous = await get(account, resubmissionOf);
+        previous = await get(account, resubmissionOf);
         if (previous.status !== 'Rejected')
           throw fail(409, 'Only rejected documents can be resubmitted.');
         if ((previous.stepId || null) !== (stepId || null))
           throw fail(400, 'Resubmit in the original documentation step.');
+      }
+      if (step) {
+        // One document is in play per step: a new one is accepted only when there
+        // is none yet, or the latest was rejected (and then it replaces that one).
+        const latest = latestByStep(await ownSubmissions(account.id))[step.id];
+        if (latest && latest.status !== 'Rejected')
+          throw fail(409, 'This task is already completed.');
+        if (latest && previous?.id !== latest.id) resubmissionOf = latest.id;
       }
       const mime = await validateSubmissionFile(fileName, bytes);
       const profile = await accounts.myProfile(account);
@@ -94,6 +144,7 @@ export function createDocumentSubmissions({
         employeeId: account.username,
         employeeName: profile?.job?.fullName || account.username,
         department: profile?.job?.department || 'Not assigned',
+        companyId: account.companyId || DEFAULT_COMPANY_ID,
         type,
         title: step?.title || title.trim(),
         stepId: step?.id || null,
@@ -108,6 +159,7 @@ export function createDocumentSubmissions({
         reviewedBy: null,
         revision: 1,
         resubmissionOf: resubmissionOf || null,
+        reviewerId: null,
       };
       await files.put(record.id, bytes, mime);
       try {
@@ -116,6 +168,7 @@ export function createDocumentSubmissions({
         await files.remove(record.id).catch(() => {});
         throw error;
       }
+      await sync(account.id);
       return record;
     },
     async download(account, id) {
@@ -135,23 +188,32 @@ export function createDocumentSubmissions({
         throw fail(400, 'A rejection reason is required (up to 2,000 characters).');
       if (!validId(id)) throw notFound();
       const ref = (await collection()).doc(id);
-      return (await db()).runTransaction(async (tx) => {
+      const reviewed = await (
+        await db()
+      ).runTransaction(async (tx) => {
         const snap = await tx.get(ref);
         if (!snap.exists) throw notFound();
         const record = snap.data();
+        if (account.companyId && record.companyId && record.companyId !== account.companyId)
+          throw notFound();
         if (record.revision !== revision)
           throw fail(409, 'This submission changed. Refresh and review the latest version.');
+        if (decided.includes(record.status))
+          throw fail(409, `This submission was already ${record.status.toLowerCase()}.`);
         const updated = {
           ...record,
           status,
           remarks: remarks.trim(),
           reviewedAt: now().toISOString(),
           reviewedBy: account.username,
+          reviewerId: account.id,
           revision: record.revision + 1,
         };
         tx.set(ref, updated);
         return updated;
       });
+      await sync(reviewed.employeeAccountId);
+      return reviewed;
     },
     async eraseEmployee(id) {
       const result = await (await collection()).where('employeeAccountId', '==', id).get();

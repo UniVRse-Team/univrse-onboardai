@@ -90,8 +90,8 @@ test('v1.4 written checks and v1.5 briefings use the contract routes and bodies'
   const { calls, options } = recorder();
   await journeyApi.answerCheck('policies.handbook', 'q7x', options);
   await journeyApi.answerWrittenCheck('policies.pdpa', 'I would not share it.', options);
-  await journeyApi.recordBriefing('documentation.contract', 'listened', options);
-  await journeyApi.recordBriefing('documentation.contract', 'read', options);
+  await journeyApi.recordBriefing('documentation.tax-id-documents', 'listened', options);
+  await journeyApi.recordBriefing('documentation.tax-id-documents', 'read', options);
   assert.deepEqual(
     calls.map((c) => [c.method, c.url, c.body]),
     [
@@ -99,10 +99,14 @@ test('v1.4 written checks and v1.5 briefings use the contract routes and bodies'
       ['POST', '/api/me/onboarding/steps/policies.pdpa/check', { answer: 'I would not share it.' }],
       [
         'POST',
-        '/api/me/onboarding/steps/documentation.contract/briefing',
+        '/api/me/onboarding/steps/documentation.tax-id-documents/briefing',
         { completion: 'listened' },
       ],
-      ['POST', '/api/me/onboarding/steps/documentation.contract/briefing', { completion: 'read' }],
+      [
+        'POST',
+        '/api/me/onboarding/steps/documentation.tax-id-documents/briefing',
+        { completion: 'read' },
+      ],
     ],
   );
 });

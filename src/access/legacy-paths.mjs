@@ -4,7 +4,7 @@ const LEGACY_EXACT = ['/guide', '/chat', '/avatar-preview', '/about', '/resource
 const LEGACY_PREFIXES = ['/guide/', '/mira/'];
 
 export function legacyRedirect(pathname) {
-  if (pathname === '/documents') return '/dashboard';
+  if (pathname === '/documents' || pathname === '/dashboard') return '/onboarding';
   if (LEGACY_EXACT.includes(pathname)) return ALYA_PATH;
   if (LEGACY_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return ALYA_PATH;
   return null;

@@ -4,6 +4,7 @@ import './styles/theme.css';
 import OnboardingWebsite from './portal/OnboardingWebsite';
 import { legacyRedirect } from './access/legacy-paths.mjs';
 import './styles/workspace-palette.css';
+import './styles/light-theme.css';
 
 // Old preview URLs now lead to the current website sections.
 const target = legacyRedirect(window.location.pathname);

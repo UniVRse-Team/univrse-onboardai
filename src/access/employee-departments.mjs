@@ -39,13 +39,17 @@ export function selectedDepartment(departments, value, current = '') {
     : '';
 }
 
+export const emptyDepartmentsMessage = 'Add a department in Settings first';
+
 // Client check for the add form; the server re-checks. -> message or null
 export function departmentProblem(form, departments) {
+  if (Array.isArray(departments) && departments.length === 0) return emptyDepartmentsMessage;
   return isKnownDepartment(departments, form?.job?.department) ? null : departmentRequiredMessage;
 }
 
 // "IDs look like PE-0001" for the chosen department, '' when none chosen.
 export function idFormatHint(departments, department) {
+  if (Array.isArray(departments) && departments.length === 0) return emptyDepartmentsMessage;
   const match = list(departments).find((item) => item.name === norm(department));
   return match ? `IDs look like ${match.prefix}-0001` : '';
 }

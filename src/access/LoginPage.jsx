@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Icon from '../portal/Icon';
 import OnboardAiBrand from '../brand/OnboardAiBrand';
 import { alyaPosterUrl } from '../avatar/avatar-poster.mjs';
+import { accountApi } from './account-api.mjs';
 import './account-access.css';
 
 export function AccessBrand() {
@@ -58,7 +59,15 @@ export function PasswordField({
   );
 }
 
-function AccountForm({ role, onSignIn, sessionNotice, accounts }) {
+function AccountForm({
+  role,
+  onSignIn,
+  onSignOut,
+  sessionNotice,
+  accounts,
+  tenantCompanyId,
+  tenantCompany,
+}) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [notice, setNotice] = useState(sessionNotice || '');
@@ -88,7 +97,18 @@ function AccountForm({ role, onSignIn, sessionNotice, accounts }) {
     setBusy(true);
     setNotice('');
     try {
-      await onSignIn(username.trim(), submitted);
+      const result = await onSignIn(username.trim(), submitted);
+      if (tenantCompanyId && result?.account) {
+        if (result.account.role !== 'admin' && result.account.companyId !== tenantCompanyId) {
+          if (onSignOut) await onSignOut();
+          const targetName = tenantCompany?.name || tenantCompanyId;
+          announce(
+            `This account belongs to another organization. Please sign in with an account from ${targetName}.`,
+            true,
+          );
+          return;
+        }
+      }
     } catch (error) {
       if (alive.current) announce(error.message, true);
     } finally {
@@ -104,8 +124,12 @@ function AccountForm({ role, onSignIn, sessionNotice, accounts }) {
         <h1>{heading}</h1>
         <p>
           {role === 'hr'
-            ? 'Sign in to your company’s HR workspace.'
-            : 'A clearer next step starts here.'}
+            ? tenantCompany?.name
+              ? `Sign in to ${tenantCompany.name}’s HR workspace.`
+              : 'Sign in to your company’s HR workspace.'
+            : tenantCompany?.name
+              ? `A clearer next step at ${tenantCompany.name} starts here.`
+              : 'A clearer next step starts here.'}
         </p>
       </div>
       <form className="access-form" onSubmit={signIn}>
@@ -190,8 +214,46 @@ function AccountForm({ role, onSignIn, sessionNotice, accounts }) {
   );
 }
 
-export default function LoginPage({ navigate, accounts = false, onSignIn, sessionNotice = '' }) {
+export default function LoginPage({
+  navigate,
+  accounts = false,
+  onSignIn,
+  onSignOut,
+  sessionNotice = '',
+  tenantCompanyId = null,
+}) {
   const [role, setRole] = useState('employee');
+  const [tenantCompany, setTenantCompany] = useState(null);
+  const [companyError, setCompanyError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    if (tenantCompanyId) {
+      accountApi
+        .publicCompany(tenantCompanyId)
+        .then((data) => {
+          if (!cancelled && data?.company) setTenantCompany(data.company);
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            setCompanyError(
+              err.status === 404
+                ? 'Company workspace not found.'
+                : err.status === 403
+                  ? 'This company workspace is currently disabled.'
+                  : 'Could not load company details.',
+            );
+          }
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantCompanyId]);
+
+  const companyDisplayName =
+    tenantCompany?.name || (tenantCompanyId ? tenantCompanyId.toUpperCase() : '');
+
   return (
     <main className="access-page">
       <a className="access-skip" href="#access-form-area">
@@ -203,7 +265,7 @@ export default function LoginPage({ navigate, accounts = false, onSignIn, sessio
           onClick={(e) => {
             if (!e.metaKey && !e.ctrlKey) {
               e.preventDefault();
-              navigate('/login');
+              navigate(tenantCompanyId ? `/companies/${tenantCompanyId}` : '/login');
             }
           }}
           aria-label="OnboardAi welcome"
@@ -211,15 +273,30 @@ export default function LoginPage({ navigate, accounts = false, onSignIn, sessio
           <AccessBrand />
         </a>
         <div className="access-intro-copy">
-          <span className="access-eyebrow">A GOOD START LOOKS DIFFERENT FOR EVERYONE</span>
+          <span className="access-eyebrow">
+            {tenantCompanyId
+              ? `${companyDisplayName.toUpperCase()} ONBOARDING WORKSPACE`
+              : 'A GOOD START LOOKS DIFFERENT FOR EVERYONE'}
+          </span>
           <h2>
-            Your next chapter.
-            <br />
-            <span>Your way.</span>
+            {tenantCompanyId ? (
+              <>
+                Welcome to
+                <br />
+                <span>{companyDisplayName}.</span>
+              </>
+            ) : (
+              <>
+                Your next chapter.
+                <br />
+                <span>Your way.</span>
+              </>
+            )}
           </h2>
           <p>
-            Meet Alya. Ask a question, find your next step,
-            <br className="access-desktop-break" /> and settle in at your own pace.
+            {tenantCompanyId
+              ? `Meet Alya, your AI onboarding assistant for ${companyDisplayName}. Ask questions, complete tasks, and settle in.`
+              : 'Meet Alya. Ask a question, find your next step, and settle in at your own pace.'}
           </p>
         </div>
         <div className="access-alya-scene">
@@ -252,8 +329,21 @@ export default function LoginPage({ navigate, accounts = false, onSignIn, sessio
       </section>
       <section className="access-form-side" id="access-form-area" aria-label="Account access">
         <div className="access-top-note">
-          <span className="access-presence-dot" /> YOUR ONBOARDING SPACE
+          <span className="access-presence-dot" />{' '}
+          {tenantCompanyId
+            ? `${companyDisplayName.toUpperCase()} WORKSPACE`
+            : 'YOUR ONBOARDING SPACE'}
         </div>
+        {companyError && (
+          <div
+            className="access-notice is-error"
+            role="alert"
+            style={{ margin: '0 24px 16px', display: 'flex' }}
+          >
+            <Icon name="info" size={18} />
+            <p>{companyError} Check your link or contact your company administrator.</p>
+          </div>
+        )}
         <div className="access-form-container">
           <fieldset className="access-role-options">
             <legend>Choose your workspace</legend>
@@ -275,8 +365,11 @@ export default function LoginPage({ navigate, accounts = false, onSignIn, sessio
             key={role}
             role={role}
             onSignIn={onSignIn}
+            onSignOut={onSignOut}
             sessionNotice={sessionNotice}
             accounts={accounts}
+            tenantCompanyId={tenantCompanyId}
+            tenantCompany={tenantCompany}
           />
         </div>
         <p className="access-form-footer">A space to ask. A way to move forward.</p>

@@ -10,7 +10,15 @@ import EmployeeFootprint from './EmployeeFootprint';
 import ActivityPage from './ActivityPage';
 import { activityIdFromPath } from './activity-model.mjs';
 import useAccountSession from '../access/use-account-session';
-import { landingPath, routeDecision } from '../access/account-routing.mjs';
+import {
+  landingPath,
+  routeDecision,
+  isAdminArea,
+  parseCompanyTenantPath,
+  isHrArea,
+} from '../access/account-routing.mjs';
+import AdminPortal from '../admin/AdminPortal';
+import AdminSignIn from '../admin/AdminSignIn';
 import { readNotes, writeNotes } from './support-notes.mjs';
 import './website.css';
 
@@ -417,11 +425,14 @@ export default function OnboardingWebsite() {
         ? 'Welcome'
         : path === '/signup'
           ? 'Create an employee account'
-          : path === '/hr'
+          : isHrArea(path)
             ? 'HR workspace'
-            : null;
-    document.title = (accessTitle || active?.label || 'Page not found') + ' · OnboardAi';
-  }, [path, account?.role]);
+            : isAdminArea(path)
+              ? 'Platform Admin'
+              : null;
+    const companyBrand = account?.company?.name || 'OnboardAi';
+    document.title = (accessTitle || active?.label || 'Page not found') + ' · ' + companyBrand;
+  }, [path, account?.role, account?.company?.name]);
   useEffect(() => {
     // Sign-in state decides some landing pages; replace so Back does not loop.
     if (decision.type !== 'redirect' || decision.to === path) return;
@@ -475,16 +486,33 @@ export default function OnboardingWebsite() {
         }}
       />
     );
-  if (['/', '/login', '/signup'].includes(path))
+  const tenant = parseCompanyTenantPath(path);
+  if (['/', '/login', '/signup'].includes(path) || tenant)
     return (
       <LoginPage
         accounts={session.accounts === true}
         onSignIn={session.signIn}
+        onSignOut={session.signOut}
         sessionNotice={session.notice}
         navigate={navigate}
+        tenantCompanyId={tenant?.companyId || null}
       />
     );
-  if (path === '/hr') return <HrWorkspace account={account} onSignOut={session.signOut} />;
+  if (isHrArea(path)) return <HrWorkspace account={account} onSignOut={session.signOut} />;
+  if (isAdminArea(path)) {
+    if (!account) {
+      return (
+        <AdminSignIn onSignIn={session.signIn} onSignOut={session.signOut} navigate={navigate} />
+      );
+    }
+    return (
+      <AdminPortal account={account} path={path} navigate={navigate} onSignOut={session.signOut} />
+    );
+  }
+  if (account?.role === 'admin')
+    return (
+      <AdminPortal account={account} path={path} navigate={navigate} onSignOut={session.signOut} />
+    );
   return (
     <div className={'uv-portal' + (assistantPath ? ' uv-assistant-workspace' : '')}>
       <a className="uv-skip-link" href="#uv-main">
@@ -493,18 +521,22 @@ export default function OnboardingWebsite() {
       <header className="uv-header">
         <div className="uv-header-top">
           <Link
-            to="/dashboard"
+            to="/onboarding"
             navigate={navigate}
             className="uv-brand-link"
-            aria-label="OnboardAi dashboard"
+            aria-label="Onboard.AI: My onboarding"
           >
             <Brand />
           </Link>
-          <span className="uv-header-caption">A NEW CHAPTER. A SHARED UNIVERSE.</span>
+          <span className="uv-header-caption">
+            {account?.company?.name
+              ? `${account.company.name.toUpperCase()} ONBOARDING`
+              : 'A NEW CHAPTER. A SHARED UNIVERSE.'}
+          </span>
           <div className="uv-header-actions">
             <span className="uv-preview-label">
               <span className="uv-small-dot mint" />
-              EMPLOYEE
+              {account?.company?.name ? account.company.name.toUpperCase() : 'EMPLOYEE'}
             </span>
             {account ? (
               <>
@@ -585,13 +617,8 @@ export default function OnboardingWebsite() {
         </nav>
       </header>
       <main className="uv-main" id="uv-main" tabIndex={-1} ref={mainRef}>
-        {['/dashboard', '/onboarding'].includes(path) ? (
-          <EmployeeFootprint
-            navigate={navigate}
-            chatPath={chatPath}
-            account={account}
-            expanded={path === '/onboarding'}
-          />
+        {path === '/onboarding' ? (
+          <EmployeeFootprint navigate={navigate} chatPath={chatPath} account={account} expanded />
         ) : activityId ? (
           <ActivityPage key={activityId} activityId={activityId} navigate={navigate} />
         ) : path === '/support' ? (
@@ -622,19 +649,10 @@ export default function OnboardingWebsite() {
           <footer className="uv-footer">
             <Brand />
             <span>YOUR NEXT CHAPTER STARTS WITH YOU.</span>
-            <span>OnboardAi / PREVIEW</span>
+            <span>Onboard.AI / PREVIEW</span>
           </footer>
         )}
       </main>
-      {!assistantPath && (
-        <Link to={chatPath} navigate={navigate} className="alya-assistant-entry">
-          <span>A</span>
-          <div>
-            Ask Alya<small>Your onboarding companion</small>
-          </div>
-          <Icon name="chat" size={19} />
-        </Link>
-      )}
       {toast && (
         <div className="uv-toast" role="status">
           <Icon name="check" size={18} />

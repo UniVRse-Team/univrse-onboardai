@@ -195,14 +195,15 @@ export function createVertexDocumentSync({
     );
 
   return {
-    async uploadDocument({ id, fileName, text, content }) {
+    async uploadDocument({ id, fileName, text, content, companyId = 'univrse' }) {
       const bearer = await token('gcs.upload', id);
-      const objectName = gcsObjectName(id, fileName);
+      const objectName = gcsObjectName(id, fileName, companyId);
       const ext = extensionOf(objectName);
       const useBinary =
         (ext === 'pdf' || ext === 'docx') && Buffer.isBuffer(content) && content.length > 0;
       const body = useBinary ? content : Buffer.from(String(text || ''), 'utf8');
       const contentType = mimeTypes[ext] || mimeTypes.txt;
+      const gsUri = `gs://${bucket}/${objectName}`;
 
       await call('gcs.upload', id, gcsUploadUrl(bucket, objectName), {
         method: 'POST',
@@ -213,7 +214,15 @@ export function createVertexDocumentSync({
         method: 'POST',
         headers: discoveryHeaders(bearer, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({
-          gcsSource: { inputUris: [`gs://${bucket}/${objectName}`], dataSchema: 'content' },
+          inlineSource: {
+            documents: [
+              {
+                id,
+                structData: { companyId: companyId || 'univrse' },
+                content: { mimeType: contentType, uri: gsUri },
+              },
+            ],
+          },
           reconciliationMode: 'INCREMENTAL',
         }),
       });
@@ -223,11 +232,11 @@ export function createVertexDocumentSync({
     // sha256(uri)[:32] (404 = gone). Only on that 404 does it list the data
     // store (every page) and delete any document with the same URI. A failed
     // or non-2xx request throws, so the caller keeps the Firestore entry.
-    async deleteDocument({ id, fileName }) {
+    async deleteDocument({ id, fileName, objectName = null, companyId = null }) {
       const bearer = await token('gcs.delete', id);
-      const objectName = gcsObjectName(id, fileName);
-      const gsUri = `gs://${bucket}/${objectName}`;
-      await deleteObject(id, objectName, bearer);
+      const targetObject = objectName || gcsObjectName(id, fileName, companyId);
+      const gsUri = `gs://${bucket}/${targetObject}`;
+      await deleteObject(id, targetObject, bearer);
 
       const deleteVertex = (vertexId) =>
         call(
@@ -263,8 +272,8 @@ export function createVertexDocumentSync({
 
     // Only the GCS object (404 = gone): a replacement's leftover after a
     // failed import.
-    async removeObject({ id, fileName }) {
-      await deleteObject(id, gcsObjectName(id, fileName), await token('gcs.delete', id));
+    async removeObject({ id, fileName, companyId = null }) {
+      await deleteObject(id, gcsObjectName(id, fileName, companyId), await token('gcs.delete', id));
     },
   };
 }
@@ -408,6 +417,8 @@ const stored = (doc) => {
     fingerprint: String(data.fingerprint || ''),
     connectedBy: data.connectedBy || null,
     connectedAt: data.connectedAt || null,
+    companyId: data.companyId || 'univrse',
+    objectName: data.objectName || null,
     created: created(data),
     status: statusOf(data),
     version: versionOf(data),
@@ -450,6 +461,8 @@ const planFields = [
   'title',
   'fileName',
   'supersedes',
+  'companyId',
+  'objectName',
 ];
 const planEntry = (doc) => {
   const data = doc.data();
@@ -463,6 +476,8 @@ const planEntry = (doc) => {
     title: String(data.title || ''),
     fileName: String(data.fileName || ''),
     supersedes: typeof data.supersedes === 'string' ? data.supersedes : null,
+    companyId: data.companyId || 'univrse',
+    objectName: data.objectName || null,
   };
 };
 
@@ -498,6 +513,7 @@ export function createCompanyDocumentStore({
     try {
       return await call(operation, fn);
     } catch (error) {
+      if (error instanceof AccountError) throw error;
       if (error instanceof ChatError && !String(error.code).startsWith('STORAGE_')) throw error;
       if (error?.code === 'STORAGE_TIMEOUT') throw companyDocumentErrors.timeout();
       throw companyDocumentErrors.unavailable();
@@ -509,7 +525,7 @@ export function createCompanyDocumentStore({
 
   // Step 2 of a replace failed: the new entry goes, the replaced one is
   // active again, then the new version's GCS object is deleted (best effort).
-  async function rollBackReplace(db, newId, oldId, fileName) {
+  async function rollBackReplace(db, newId, oldId, fileName, companyId = null) {
     let failure = null;
     try {
       await guarded('roll back company document replace', () =>
@@ -527,7 +543,7 @@ export function createCompanyDocumentStore({
     }
     if (sync?.removeObject)
       try {
-        await sync.removeObject({ id: newId, fileName });
+        await sync.removeObject({ id: newId, fileName, companyId });
       } catch (error) {
         failure ??= error;
       }
@@ -550,7 +566,12 @@ export function createCompanyDocumentStore({
     let failure = null;
     if (sync)
       try {
-        await sync.deleteDocument({ id: old.id, fileName: old.fileName });
+        await sync.deleteDocument({
+          id: old.id,
+          fileName: old.fileName,
+          objectName: old.objectName,
+          companyId: old.companyId,
+        });
       } catch (error) {
         failure = error;
       }
@@ -575,19 +596,20 @@ export function createCompanyDocumentStore({
 
   return {
     // Every document in the library (retired entries left out), oldest first.
-    list: () =>
+    list: (companyId = null) =>
       guarded('list company documents', async () => {
         const found = await collection(await database()).get();
         return found.docs
           .map(stored)
           .filter((doc) => doc.status !== 'retired')
+          .filter((doc) => !companyId || doc.companyId === companyId)
           .sort(byConnection);
       }),
     // Every entry, retired ones included, as companyDocumentSummary objects
     // ({ id, fileName, title, category, status, version, connectedAt,
     // retiredAt }), oldest first. One select-only query: the legacy `text`
     // field is never read.
-    listSummaries: () =>
+    listSummaries: (companyId = null) =>
       guarded('list company document summaries', async () => {
         const found = await collection(await database())
           .select(...companyDocumentSummaryFields)
@@ -597,6 +619,7 @@ export function createCompanyDocumentStore({
             ...companyDocumentSummary(doc.id, doc.data()),
             created: created(doc.data()),
           }))
+          .filter((doc) => !companyId || doc.companyId === companyId)
           .sort(byConnection)
           .map(({ created: _created, ...summary }) => summary);
       }),
@@ -604,16 +627,17 @@ export function createCompanyDocumentStore({
     // writes metadata only (never the text) in one transaction, so two HR
     // browsers cannot both take the last place, then syncs new documents to
     // GCS + Vertex AI Search. Resolves to { id, duplicate }.
-    add: async (upload, connectedBy, at) => {
+    add: async (upload, connectedBy, at, companyId = 'univrse') => {
       const db = await guarded('add company document', database);
       const plan = await guarded('add company document', () =>
         db.runTransaction(async (tx) => {
-          const current = await readPlanEntries(
-            tx.get(collection(db).select('category', 'fingerprint', 'characters', 'status')),
-          );
+          const current = (
+            await readPlanEntries(tx.get(collection(db).select(...planFields)))
+          ).filter((doc) => !companyId || doc.companyId === companyId);
           const planned = planUpload(current, upload);
           if (planned.duplicate) return planned;
           const { category, title, fileName, text, bytes } = upload;
+          const objectName = gcsObjectName(planned.id, fileName, companyId);
           tx.set(collection(db).doc(planned.id), {
             category,
             title,
@@ -625,8 +649,10 @@ export function createCompanyDocumentStore({
             connectedAt: at.toISOString(),
             status: 'active',
             version: 1,
+            companyId,
+            objectName,
           });
-          return planned;
+          return { ...planned, objectName };
         }),
       );
       if (!plan.duplicate && sync) {
@@ -637,6 +663,7 @@ export function createCompanyDocumentStore({
             title: upload.title,
             text: upload.text,
             content: upload.content,
+            companyId,
           });
         } catch (error) {
           await guarded('add company document', () => collection(db).doc(plan.id).delete()).catch(
@@ -645,7 +672,7 @@ export function createCompanyDocumentStore({
           throw error;
         }
       }
-      return plan;
+      return { id: plan.id, duplicate: plan.duplicate };
     },
     // Replaces current document `replaces` with an upload ({ category, title:
     // HR's name or null to keep the replaced title, fallbackTitle, fileName,
@@ -660,7 +687,14 @@ export function createCompanyDocumentStore({
     //   2. sync the new version; on failure roll step 1 back, delete the new
     //      GCS object and throw the 503/504 (the old version is active again);
     //   3. clean up the old version (cleanUpReplaced).
-    replace: async (replaces, upload, connectedBy, at, { audit = null } = {}) => {
+    replace: async (
+      replaces,
+      upload,
+      connectedBy,
+      at,
+      { audit = null } = {},
+      companyId = 'univrse',
+    ) => {
       if (!validId(replaces)) throw companyDocumentErrors.notFound();
       const db = await guarded('replace company document', database);
       const readAll = () =>
@@ -669,8 +703,10 @@ export function createCompanyDocumentStore({
             .select(...planFields)
             .get(),
         );
+      const allEntries = await guarded('replace company document', readAll);
+      const companyEntries = allEntries.filter((doc) => !companyId || doc.companyId === companyId);
       // Checked before the audit row: a duplicate or refused replace leaves none.
-      const checked = planReplace(await guarded('replace company document', readAll), {
+      const checked = planReplace(companyEntries, {
         replaces,
         text: upload.text,
       });
@@ -680,10 +716,13 @@ export function createCompanyDocumentStore({
       const run = async () => {
         const plan = await guarded('replace company document', () =>
           db.runTransaction(async (tx) => {
-            const current = await readPlanEntries(tx.get(collection(db).select(...planFields)));
+            const current = (
+              await readPlanEntries(tx.get(collection(db).select(...planFields)))
+            ).filter((doc) => !companyId || doc.companyId === companyId);
             const planned = planReplace(current, { replaces, text: upload.text, newId });
             if (planned.duplicate) return planned;
             const old = planned.replaced;
+            const objectName = gcsObjectName(newId, upload.fileName, companyId);
             tx.set(collection(db).doc(newId), {
               category: upload.category,
               title: upload.title ?? (old.title || upload.fallbackTitle),
@@ -696,6 +735,8 @@ export function createCompanyDocumentStore({
               status: 'active',
               version: planned.version,
               supersedes: old.id,
+              companyId,
+              objectName,
             });
             tx.update(collection(db).doc(old.id), {
               status: 'retired',
@@ -705,18 +746,21 @@ export function createCompanyDocumentStore({
           }),
         );
         if (plan.duplicate) return { id: plan.id, duplicate: true, replaced: null };
-        if (sync)
+        if (sync) {
           try {
             await sync.uploadDocument({
               id: newId,
               fileName: upload.fileName,
+              title: upload.title,
               text: upload.text,
               content: upload.content,
+              companyId,
             });
           } catch (error) {
-            await rollBackReplace(db, newId, replaces, upload.fileName);
+            await rollBackReplace(db, newId, replaces, upload.fileName, companyId);
             throw error;
           }
+        }
         const cleanup = await cleanUpReplaced(db, plan.replaced);
         return { id: newId, duplicate: false, replaced: { id: replaces, cleanup } };
       };
@@ -725,7 +769,7 @@ export function createCompanyDocumentStore({
         : run();
     },
     // One current document metadata entry, or the 404 (unknown or retired).
-    get: (id) =>
+    get: (id, companyId = null) =>
       guarded('read company document', async () => {
         if (!validId(id)) throw companyDocumentErrors.notFound();
         const found = await collection(await database())
@@ -733,47 +777,67 @@ export function createCompanyDocumentStore({
           .get();
         if (!found.exists || statusOf(found.data()) === 'retired')
           throw companyDocumentErrors.notFound();
-        return stored(found);
+        const item = stored(found);
+        if (companyId && item.companyId !== companyId) throw companyDocumentErrors.notFound();
+        return item;
       }),
     // Moves one document to another category (checked and written in one
     // transaction): 404 for an unknown or retired id, 409 when another
     // document already holds the same text. Resolves to the stored metadata.
-    move: (id, category) =>
+    move: (id, category, companyId = null) =>
       guarded('move company document', async () => {
         if (!validId(id)) throw companyDocumentErrors.notFound();
         const db = await database();
         await db.runTransaction(async (tx) => {
-          const current = await readPlanEntries(
-            tx.get(collection(db).select('category', 'fingerprint', 'characters', 'status')),
-          );
+          const docRef = collection(db).doc(id);
+          const docSnap = await tx.get(docRef);
+          if (!docSnap.exists || statusOf(docSnap.data()) === 'retired')
+            throw companyDocumentErrors.notFound();
+          const docCompanyId = docSnap.data().companyId || 'univrse';
+          if (companyId && docCompanyId !== companyId) {
+            throw companyDocumentErrors.notFound();
+          }
+          const current = (
+            await readPlanEntries(tx.get(collection(db).select(...planFields)))
+          ).filter((doc) => !companyId || doc.companyId === companyId);
           const plan = planMove(current, id, category);
-          if (!plan.unchanged) tx.update(collection(db).doc(id), { category });
+          if (!plan.unchanged) tx.update(docRef, { category });
         });
         return stored(await collection(db).doc(id).get());
       }),
     // GCS and Vertex AI Search first: if either fails (a non-2xx answer, a
     // failed list, a timeout), the error is thrown and the metadata stays so
     // HR can retry (a retry tolerates the 404s of what is already gone).
-    remove: async (id) => {
-      if (!validId(id)) throw companyDocumentErrors.notFound();
-      const db = await guarded('remove company document', database);
-      const ref = collection(db).doc(id);
-      const existing = await guarded('remove company document', async () => {
-        const found = await ref.get();
-        if (!found.exists || statusOf(found.data()) === 'retired')
-          throw companyDocumentErrors.notFound();
-        return stored(found);
-      });
-      if (sync) await sync.deleteDocument({ id: existing.id, fileName: existing.fileName });
-      await guarded('remove company document', () =>
-        db.runTransaction(async (tx) => {
-          const found = await tx.get(ref);
+    remove: (id, companyId = null) =>
+      guarded('remove company document', async () => {
+        if (!validId(id)) throw companyDocumentErrors.notFound();
+        const db = await guarded('remove company document', database);
+        const ref = collection(db).doc(id);
+        const existing = await guarded('remove company document', async () => {
+          const found = await ref.get();
           if (!found.exists || statusOf(found.data()) === 'retired')
             throw companyDocumentErrors.notFound();
-          tx.delete(ref);
-        }),
-      );
-    },
+          const item = stored(found);
+          if (companyId && item.companyId !== companyId) throw companyDocumentErrors.notFound();
+          return item;
+        });
+        if (sync) {
+          await sync.deleteDocument({
+            id: existing.id,
+            fileName: existing.fileName,
+            objectName: existing.objectName,
+            companyId: existing.companyId,
+          });
+        }
+        await guarded('remove company document', () =>
+          db.runTransaction(async (tx) => {
+            const found = await tx.get(ref);
+            if (!found.exists || statusOf(found.data()) === 'retired')
+              throw companyDocumentErrors.notFound();
+            tx.delete(ref);
+          }),
+        );
+      }),
     close: async () => {
       const open = client;
       client = null;
