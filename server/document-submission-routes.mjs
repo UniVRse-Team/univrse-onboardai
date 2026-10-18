@@ -22,7 +22,7 @@ export function mountDocumentSubmissionRoutes({ me, hr, employeeOnly, hrOnly, su
       raw(req, res, (error) =>
         next(
           error
-            ? new ChatError(413, 'FILE_TOO_LARGE', 'Each file must be 5 MB or smaller.')
+            ? new ChatError(413, 'FILE_TOO_LARGE', 'Each file must be 25 MB or smaller.')
             : undefined,
         ),
       );

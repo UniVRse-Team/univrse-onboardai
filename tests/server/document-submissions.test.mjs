@@ -80,7 +80,7 @@ test('file validation rejects spoofed, empty, oversized, invalid and dangerous n
     ['fake.png', content],
     ['x.svg', content],
     ['empty.pdf', Buffer.alloc(0)],
-    ['large.pdf', Buffer.alloc(5 * 1024 * 1024 + 1)],
+    ['large.pdf', Buffer.alloc(25 * 1024 * 1024 + 1)],
     ['../x.pdf', content],
     ['x.docx', Buffer.from('PK not a document')],
   ])

@@ -8,7 +8,7 @@ Run `npm run dev:preview`, then open:
 - HR: http://localhost:3000/hr#submissions (Submissions in the HR navigation).
 
 The guarded preview starts with six clearly labelled synthetic submissions. Upload a
-sample PDF, DOCX, JPG or PNG (up to 5 MB); switch to HR, review it, and return to
+sample PDF, DOCX, JPG or PNG (up to 25 MB); switch to HR, review it, and return to
 the corresponding employee dashboard step to see the decision and remarks. Both sides share the same
 in-memory records and file bytes. Document status updates automatically after an upload, when the window is focused and every 30 seconds.
 Changes disappear when the preview restarts. This is not a production upload.
@@ -53,7 +53,7 @@ policy is imposed; HR must confirm retention, access and audit requirements.
 
 ## Assumptions and current limits
 
-- One file per submission, maximum 5 MB. Categories and statuses are shared in
+- One file per submission, maximum 25 MB. Categories and statuses are shared in
   `shared/document-submissions.mjs` and can be edited centrally.
 - Submission time and employee identity are assigned by the server. Step IDs are validated against the employee’s actual Documentation plan.
 - Rejection requires remarks. Employees resubmit as a new Pending Review record,
