@@ -17,6 +17,14 @@ export function parseAdminPath(path) {
   return match ? { page: 'company', companyId: match[1] } : null;
 }
 
+export const companyTenantPattern = /^\/companies\/([a-z][a-z0-9-]{1,30}[a-z0-9])(?:\/login)?\/?$/;
+// -> { companyId } | null
+export function parseCompanyTenantPath(path) {
+  const match = companyTenantPattern.exec(String(path));
+  return match ? { companyId: match[1] } : null;
+}
+export const companyTenantPath = (companyId) => '/companies/' + encodeURIComponent(companyId);
+
 const loginPaths = ['/', '/login'];
 
 // Every route needs an account. Signed-out visitors are sent to /login, which
@@ -29,13 +37,22 @@ export function routeDecision({ accounts, loading = false, account = null, path 
     // Accounts are off: only the sign-in page exists, and it says so.
     return loginPaths.includes(path) ? { type: 'render' } : { type: 'redirect', to: '/login' };
   }
-  if (!account)
+  const tenant = parseCompanyTenantPath(path);
+  if (!account) {
+    if (path === '/admin' || path === '/admin/') return { type: 'render' };
+    if (isAdminArea(path)) return { type: 'redirect', to: adminHome };
+    if (tenant) return { type: 'render' };
     return loginPaths.includes(path) ? { type: 'render' } : { type: 'redirect', to: '/login' };
+  }
   if (account.mustChangePassword === true) return { type: 'change-password' };
   const landing = landingPath(account);
   // /dashboard was the same page as My onboarding and is retired.
   if (path === '/dashboard' && account.role !== 'hr') return { type: 'redirect', to: landing };
   if (loginPaths.includes(path) || path === '/signup') return { type: 'redirect', to: landing };
+  if (tenant) {
+    if (account.role === 'admin') return { type: 'redirect', to: adminHome };
+    return { type: 'redirect', to: landing };
+  }
   // An admin belongs to no company and may only use the two admin pages.
   if (account.role === 'admin')
     return parseAdminPath(path) ? { type: 'render' } : { type: 'redirect', to: adminHome };

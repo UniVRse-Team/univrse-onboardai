@@ -149,14 +149,14 @@ export default function AdminDashboard({ navigate }) {
                   <td className="admin-company-link-cell">
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <a
-                        href={`/admin/companies/${company.id}`}
+                        href={`/companies/${company.id}`}
                         onClick={(e) => {
                           e.preventDefault();
-                          navigate(`/admin/companies/${company.id}`);
+                          navigate(`/companies/${company.id}`);
                         }}
                         style={{ fontSize: 13, color: '#256a91', textDecoration: 'underline' }}
                       >
-                        /admin/companies/{company.id}
+                        /companies/{company.id}
                       </a>
                       <button
                         type="button"
@@ -172,7 +172,7 @@ export default function AdminDashboard({ navigate }) {
                           alignItems: 'center',
                         }}
                         onClick={async () => {
-                          const fullUrl = `${window.location.origin}/admin/companies/${company.id}`;
+                          const fullUrl = `${window.location.origin}/companies/${company.id}`;
                           try {
                             await navigator.clipboard.writeText(fullUrl);
                             setCopiedCompanyId(company.id);

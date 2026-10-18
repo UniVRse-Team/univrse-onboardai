@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   checkHrCredentials,
+  createAdminAccount,
   createHrAccount,
   parsePipedInput,
+  resetAdminAccountPassword,
   resetHrAccountPassword,
 } from '../../scripts/hr-account-tool.mjs';
 import { startAccountsApp } from './account-harness.mjs';
@@ -144,5 +146,38 @@ test('hr:reset-password only touches HR accounts and reports failures without th
     assert.equal(down.ok, false);
     assert.match(down.message, /could not be reset/);
     assert.ok(!down.message.includes('synthetic-secret-9'));
+  });
+});
+
+test('admin:create makes an admin account without company, and admin:reset-password resets it', async () => {
+  await withApp(async (app) => {
+    const options = { hash: app.hashing.hash, at: app.clock.now() };
+    const created = await createAdminAccount(
+      app.store,
+      entered('admin', 'synthetic-admin-pass-1'),
+      options,
+    );
+    assert.equal(created.ok, true);
+    assert.match(created.message, /Created Admin account admin/);
+
+    const accounts = await app.rows(
+      "SELECT username, role, company_id FROM accounts WHERE username = 'admin'",
+    );
+    assert.deepEqual(accounts, [{ username: 'admin', role: 'admin', company_id: null }]);
+
+    const signed = await app.browser().signIn('admin', 'synthetic-admin-pass-1');
+    assert.equal(signed.status, 200);
+    assert.equal(signed.body.account.role, 'admin');
+
+    const reset = await resetAdminAccountPassword(
+      app.store,
+      entered('admin', 'synthetic-admin-new-1'),
+      options,
+    );
+    assert.equal(reset.ok, true);
+    assert.match(reset.message, /Reset the password for Admin account admin/);
+
+    assert.equal((await app.browser().signIn('admin', 'synthetic-admin-pass-1')).status, 401);
+    assert.equal((await app.browser().signIn('admin', 'synthetic-admin-new-1')).status, 200);
   });
 });
