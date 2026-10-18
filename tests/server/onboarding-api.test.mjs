@@ -650,3 +650,69 @@ test('a Firestore failure on the footprint is the profile storage error, with no
     assert.ok(app.logs.every((line) => !line.includes('Injected failure')));
   });
 });
+
+test('multi-tenant HR can view and manage employee onboarding and first-day details for their company', async () => {
+  await withApp({}, async (app) => {
+    // 1. Setup an admin account and create a non-default company.
+    await app.store.createAccount({
+      username: 'ADMIN-0001',
+      passwordHash: await app.hashing.hash('synthetic-admin-pass-1'),
+      role: 'admin',
+      mustChangePassword: false,
+      action: 'admin_created',
+      at: app.clock.now(),
+      companyId: null,
+    });
+    const admin = app.browser();
+    await admin.signIn('ADMIN-0001', 'synthetic-admin-pass-1');
+    const companyRes = await admin.post('/api/admin/companies', { name: 'Acme Global' });
+    assert.equal(companyRes.status, 201);
+    const companyId = companyRes.body.company.id;
+
+    // 2. Create HR account for Acme Global and sign in.
+    const hrAccountRes = await admin.post(`/api/admin/companies/${companyId}/hr-accounts`, {});
+    assert.equal(hrAccountRes.status, 201);
+    const acmeHr = app.browser();
+    await acmeHr.signIn(hrAccountRes.body.hrAccount.username, hrAccountRes.body.temporaryPassword);
+    const changePass = await acmeHr.post('/api/auth/password', {
+      currentPassword: hrAccountRes.body.temporaryPassword,
+      newPassword: 'acme-hr-real-pass-1',
+    });
+    assert.equal(changePass.status, 200);
+
+    // 3. Acme HR creates an employee.
+    const empRes = await acmeHr.post('/api/hr/employees', {
+      profile: syntheticProfile('Acme Newbie'),
+    });
+    assert.equal(empRes.status, 201);
+    const empId = empRes.body.employee.account.id;
+
+    // 4. Acme HR can view employee onboarding (must NOT be 404).
+    const onboardingRes = await acmeHr.get(`/api/hr/employees/${empId}/onboarding`);
+    assert.equal(onboardingRes.status, 200);
+    assert.ok(onboardingRes.body.areas);
+    assert.equal(typeof onboardingRes.body.percent, 'number');
+
+    // 5. Acme HR can view and save first-day details (must NOT be 404).
+    const firstDayRes = await acmeHr.get(`/api/hr/employees/${empId}/first-day`);
+    assert.equal(firstDayRes.status, 200);
+
+    const saveFirstDayRes = await acmeHr.put(`/api/hr/employees/${empId}/first-day`, {
+      location: 'Building B, Level 4',
+      arrivalTime: '09:30',
+      hostName: 'Sarah Jenkins',
+      hostContact: 'sarah@acme.example',
+      notes: 'Bring your laptop.',
+    });
+    assert.equal(saveFirstDayRes.status, 200);
+    assert.equal(saveFirstDayRes.body.firstDay.location, 'Building B, Level 4');
+
+    // 6. Cross-tenant isolation: default HR cannot view Acme employee's onboarding.
+    const defaultHr = await app.hrBrowser('HR-0002');
+    const crossOnboarding = await defaultHr.get(`/api/hr/employees/${empId}/onboarding`);
+    assert.equal(crossOnboarding.status, 404);
+
+    const crossFirstDay = await defaultHr.get(`/api/hr/employees/${empId}/first-day`);
+    assert.equal(crossFirstDay.status, 404);
+  });
+});
