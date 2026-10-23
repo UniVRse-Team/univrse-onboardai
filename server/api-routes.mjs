@@ -1,6 +1,8 @@
 import express from 'express';
 import { createDocumentSubmissions } from './document-submissions.mjs';
 import { createSubmissionFiles } from './submission-files.mjs';
+import { createCompanyDocumentFiles } from './company-document-files.mjs';
+import { createEmployeeCompanyDocuments } from './employee-company-documents.mjs';
 import { GoogleAuth } from 'google-auth-library';
 
 import { tasks, demoAnswer, systemPrompt } from './sample-onboarding-content.mjs';
@@ -106,6 +108,10 @@ export function createApp({
   // VERTEX_SEARCH_DATA_STORE_ID are set.
   companyDocuments = undefined,
   submissionFiles = undefined,
+  // Reads an uploaded company document's file for its employees
+  // (company-document-files.mjs). By default from DOCS_BUCKET with
+  // getAccessToken; null turns the file route's reads off (503).
+  companyDocumentFiles = undefined,
   // The company search (Vertex AI Search, or the sample guide); tests replace it.
   companyRetrieve = undefined,
   // The onboarding journey's Firestore (issues #47-#50): { firestore, now?,
@@ -392,6 +398,16 @@ export function createApp({
     companyKnowledge: knowledge,
     journey,
     submissions: documentSubmissions,
+    // An employee's own company documents (issue #126): the library's active
+    // entries of their company, and their files from DOCS_BUCKET.
+    // Without a library or a bucket they answer 503 COMPANY_DOCUMENTS_UNAVAILABLE.
+    companyDocuments: createEmployeeCompanyDocuments({
+      documents: library,
+      files:
+        companyDocumentFiles !== undefined
+          ? companyDocumentFiles
+          : createCompanyDocumentFiles({ env, fetchImpl, getAccessToken: vertexToken }),
+    }),
   });
   // Both stores close asynchronously (Firestore client or SQLite file), as do
   // the account database pool and the profile and library clients.

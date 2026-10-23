@@ -122,6 +122,21 @@ const mimeTypes = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   txt: 'text/plain; charset=utf-8',
 };
+// The content type of a stored object, by its name's extension: PDF and Word
+// objects hold the original file, every other object the extracted UTF-8 text.
+export const objectContentType = (objectName) =>
+  mimeTypes[extensionOf(objectName)] || mimeTypes.txt;
+// What an upload writes to the object `objectName`: the original bytes of a PDF
+// or Word file (when given), else the extracted text as UTF-8.
+export function objectBody(objectName, { text, content }) {
+  const ext = extensionOf(objectName);
+  const useBinary =
+    (ext === 'pdf' || ext === 'docx') && Buffer.isBuffer(content) && content.length > 0;
+  return {
+    body: useBinary ? content : Buffer.from(String(text || ''), 'utf8'),
+    contentType: objectContentType(objectName),
+  };
+}
 
 export function createVertexDocumentSync({
   env = {},
@@ -199,11 +214,7 @@ export function createVertexDocumentSync({
     async uploadDocument({ id, fileName, text, content, companyId = DEFAULT_COMPANY_ID }) {
       const bearer = await token('gcs.upload', id);
       const objectName = gcsObjectName(id, fileName, companyId);
-      const ext = extensionOf(objectName);
-      const useBinary =
-        (ext === 'pdf' || ext === 'docx') && Buffer.isBuffer(content) && content.length > 0;
-      const body = useBinary ? content : Buffer.from(String(text || ''), 'utf8');
-      const contentType = mimeTypes[ext] || mimeTypes.txt;
+      const { body, contentType } = objectBody(objectName, { text, content });
       const gsUri = `gs://${bucket}/${objectName}`;
 
       await call('gcs.upload', id, gcsUploadUrl(bucket, objectName), {

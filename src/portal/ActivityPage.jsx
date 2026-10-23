@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import CheckForm from './CheckForm';
 import QuizRunner from './QuizRunner';
+import { useCompanyDocuments } from './CompanyDocuments';
+import { policyButtonTarget } from './company-documents-model.mjs';
 import { journeyApi } from '../access/journey-api.mjs';
 import { accountApi } from '../access/account-api.mjs';
 import {
@@ -28,6 +30,7 @@ export default function ActivityPage({ activityId, navigate }) {
   const [state, setState] = useState({ status: 'loading' });
   const [data, setData] = useState({ onboarding: null, content: null, records: {}, profile: null });
   const [passedCheck, setPassedCheck] = useState(false);
+  const companyDocuments = useCompanyDocuments().documents;
   const guard = useRef(null);
 
   const load = useCallback(async () => {
@@ -165,6 +168,7 @@ export default function ActivityPage({ activityId, navigate }) {
         back={back}
         registerGuard={(fn) => (guard.current = fn)}
         initialNotes={draft?.notes || ''}
+        companyDocuments={companyDocuments}
       />
 
       {step?.status === 'done' && activity.kind !== 'quiz' && activity.kind !== 'policy' && (
@@ -192,6 +196,7 @@ function ActivityBody({
   back,
   registerGuard,
   initialNotes,
+  companyDocuments,
 }) {
   const [notes, setNotes] = useState(initialNotes);
   const [ackBusy, setAckBusy] = useState(false);
@@ -200,6 +205,13 @@ function ActivityBody({
     () => activity.kind !== 'policy' || Boolean(records.sessions?.[`policies/${activity.id}`]),
   );
   const { kind, step } = activity;
+  const policyTarget = activity.policy
+    ? policyButtonTarget({
+        stepId: step?.id,
+        document: activity.policy.document,
+        documents: companyDocuments,
+      })
+    : null;
 
   if (kind === 'policy' || kind === 'quiz') {
     const policyRecord = kind === 'policy' ? records.policies?.[activity.id] : null;
@@ -227,14 +239,18 @@ function ActivityBody({
             <h2>Read the policy</h2>
             <p>{step.briefing?.text}</p>
             <p className="fp-muted">Source: {activity.policy.sourceTitle}.</p>
-            {activity.policy.document ? (
+            {policyTarget ? (
               <a
                 className="fp-action"
-                href={activity.policy.document.url}
+                href={
+                  policyTarget.kind === 'uploaded' ? policyTarget.url : policyTarget.document.url
+                }
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                {policyDocumentLabel(step.id, activity.policy.document)}
+                {policyTarget.kind === 'uploaded'
+                  ? policyTarget.label
+                  : policyDocumentLabel(step.id, policyTarget.document)}
               </a>
             ) : (
               <p className="fp-muted">
@@ -283,14 +299,18 @@ function ActivityBody({
             <h2>{activity.policy.title}</h2>
             <p>{step.briefing?.text}</p>
             <p className="fp-muted">Source: {activity.policy.sourceTitle}.</p>
-            {!activity.policy.document && (
+            {!policyTarget && (
               <p className="fp-muted">
                 The full document has not been linked yet (content requirement); the summary above
                 is the approved text from your onboarding plan.
               </p>
             )}
             <div className="qr-actions">
-              <PolicyDocumentButton stepId={step.id} document={activity.policy.document} />
+              <PolicyDocumentButton
+                stepId={step.id}
+                document={activity.policy.document}
+                companyDocuments={companyDocuments}
+              />
               <button type="button" className="fp-action main" onClick={() => setQuizStarted(true)}>
                 {passed ? 'Practise Quiz' : record?.attempts ? 'Retry Quiz' : 'Start Quiz'}
               </button>
