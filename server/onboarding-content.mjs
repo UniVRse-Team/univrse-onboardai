@@ -23,15 +23,11 @@
 // Employee Handbook (version 3.2, effective 1 October 2026). Only short
 // paraphrases are kept here, never the document text.
 
+import { areaOrder } from './onboarding-document-topics.mjs';
+
 export const tracks = Object.freeze(['employee', 'intern', 'contractor']);
 export const defaultTrack = 'employee';
-export const areaOrder = Object.freeze([
-  'documentation',
-  'policies',
-  'alignment',
-  'role-tools',
-  'team-support',
-]);
+export { areaOrder };
 export const completionTypes = Object.freeze(['self', 'hr_verify', 'check']);
 export const checkTypes = Object.freeze(['choice', 'written']);
 export const templateVersion = 9;

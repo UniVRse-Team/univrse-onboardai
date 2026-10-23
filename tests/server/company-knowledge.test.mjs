@@ -97,7 +97,7 @@ test('HR uploads PDF, DOCX, text and Markdown files; only text and metadata are 
     });
     assert.deepEqual(
       empty.body.topics.map((topic) => topic.id),
-      ['alignment', 'documentation', 'team-support', 'role-tools', 'policies'],
+      ['documentation', 'policies', 'alignment', 'role-tools', 'team-support'],
     );
 
     const files = [
@@ -569,7 +569,7 @@ test('the library is HR-only, and a Firestore failure is a fixed 503', async () 
   });
   assert.deepEqual(
     onboardingDocumentTopics.map((topic) => topic.id),
-    ['alignment', 'documentation', 'team-support', 'role-tools', 'policies'],
+    ['documentation', 'policies', 'alignment', 'role-tools', 'team-support'],
   );
 });
 

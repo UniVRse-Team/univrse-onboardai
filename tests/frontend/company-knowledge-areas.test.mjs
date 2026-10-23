@@ -110,7 +110,7 @@ test('the snapshot topics win; the shared list is only a fallback', () => {
   const fallback = areaTopics({ documents: [] });
   assert.deepEqual(
     fallback.map((topic) => topic.id),
-    ['alignment', 'documentation', 'team-support', 'role-tools', 'policies'],
+    ['documentation', 'policies', 'alignment', 'role-tools', 'team-support'],
   );
   assert.deepEqual(areaTopics({ topics: [] }), fallback);
   assert.deepEqual(areaTopics({ topics: [null, { id: '' }] }), fallback);

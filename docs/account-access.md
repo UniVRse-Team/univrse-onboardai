@@ -555,10 +555,12 @@ KnowledgeSnapshot {
 
 - **Areas** (issue #68): the library is the five onboarding areas, each a folder holding any number
   of documents, plus `additional` ("Other useful guidance"). `topics` lists the areas
-  (`server/onboarding-document-topics.mjs`): `alignment` (Company Purpose & Alignment, icon
-  `planet`), `documentation` (Documentation, `checklist`), `team-support` (People & Workplace
-  Support, `people`), `role-tools` (Role, Tools & AI Readiness, `laptop`) and `policies`
-  (Policies & Safe Practices, `shield`). The ids match the onboarding template areas. A document's
+  in the My Onboarding order (`areaOrder`, defined once in `server/onboarding-document-topics.mjs`
+  and re-exported by `server/onboarding-content.mjs`, so the HR page numbers them like the
+  checklist; issue #128): `documentation` (Documentation, icon `checklist`), `policies` (Policies
+  & Safe Practices, `shield`), `alignment` (Company Purpose & Alignment, `planet`), `role-tools`
+  (Role, Tools & AI Readiness, `laptop`) and `team-support` (People & Workplace Support,
+  `people`). The ids match the onboarding template areas. A document's
   `category` is an area id or `additional`. The six earlier topic ids (`company`, `handbook`,
   `first-week`, `role`, `it`, `communication`) are retired; Firestore migration
   `004_company_documents_areas` re-files them (`company` to `alignment`, `handbook` to `policies`,

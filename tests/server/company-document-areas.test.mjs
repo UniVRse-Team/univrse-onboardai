@@ -3,6 +3,7 @@
 // their own titles. Synthetic data only.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { areaOrder } from '../../server/onboarding-content.mjs';
 import { randomUUID } from 'node:crypto';
 import { FakeFirestore } from './fake-firestore.mjs';
 import { startAccountsApp } from './account-harness.mjs';
@@ -25,14 +26,18 @@ const stored = (category, title) => ({
   connectedAt: '2026-10-01T00:00:00.000Z',
 });
 
-test('the five areas, in order, with the exact titles and descriptions', () => {
+test('the five areas, in My Onboarding order, with the exact titles and descriptions', () => {
+  assert.deepEqual(
+    onboardingDocumentTopics.map((topic) => topic.id),
+    ['documentation', 'policies', 'alignment', 'role-tools', 'team-support'],
+  );
+  // One source of truth: same order as the My Onboarding areas (issue #128).
+  assert.deepEqual(
+    onboardingDocumentTopics.map((topic) => topic.id),
+    [...areaOrder],
+  );
+  assert.deepEqual(documentCategories, [...areaOrder, 'additional']);
   assert.deepEqual(onboardingDocumentTopics, [
-    {
-      id: 'alignment',
-      title: 'Company Purpose & Alignment',
-      description: 'Understand what the company does, its goals and how your role contributes.',
-      icon: 'planet',
-    },
     {
       id: 'documentation',
       title: 'Documentation',
@@ -40,11 +45,16 @@ test('the five areas, in order, with the exact titles and descriptions', () => {
       icon: 'checklist',
     },
     {
-      id: 'team-support',
-      title: 'People & Workplace Support',
-      description:
-        'Know your teammates, who to ask for help and optionally share working preferences or support needs.',
-      icon: 'people',
+      id: 'policies',
+      title: 'Policies & Safe Practices',
+      description: 'Understand company rules, privacy and responsible AI use.',
+      icon: 'shield',
+    },
+    {
+      id: 'alignment',
+      title: 'Company Purpose & Alignment',
+      description: 'Understand what the company does, its goals and how your role contributes.',
+      icon: 'planet',
     },
     {
       id: 'role-tools',
@@ -54,10 +64,11 @@ test('the five areas, in order, with the exact titles and descriptions', () => {
       icon: 'laptop',
     },
     {
-      id: 'policies',
-      title: 'Policies & Safe Practices',
-      description: 'Understand company rules, privacy and responsible AI use.',
-      icon: 'shield',
+      id: 'team-support',
+      title: 'People & Workplace Support',
+      description:
+        'Know your teammates, who to ask for help and optionally share working preferences or support needs.',
+      icon: 'people',
     },
   ]);
   assert.deepEqual(documentCategories.at(-1), 'additional');
