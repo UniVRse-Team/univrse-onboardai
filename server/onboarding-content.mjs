@@ -23,15 +23,11 @@
 // Employee Handbook (version 3.2, effective 1 October 2026). Only short
 // paraphrases are kept here, never the document text.
 
+import { areaOrder } from './onboarding-document-topics.mjs';
+
 export const tracks = Object.freeze(['employee', 'intern', 'contractor']);
 export const defaultTrack = 'employee';
-export const areaOrder = Object.freeze([
-  'documentation',
-  'policies',
-  'alignment',
-  'role-tools',
-  'team-support',
-]);
+export { areaOrder };
 export const completionTypes = Object.freeze(['self', 'hr_verify', 'check']);
 export const checkTypes = Object.freeze(['choice', 'written']);
 export const templateVersion = 9;
@@ -999,4 +995,30 @@ export function starterTemplate(track = defaultTrack) {
       })),
     })),
   };
+}
+
+// The starter pack's general chips (issue #126), the fallback for
+// config/quickQuestions["starter.<track>"]. The knowledge chips are the
+// askAlya questions of three starter steps (same text, so a helpful answer to
+// one still records that step's briefing); the personal chips are the
+// company-neutral first-day ones. No Luna Digital question is ever offered.
+const starterChipSteps = Object.freeze([
+  ['alignment', 'company-overview'],
+  ['policies', 'company-rules'],
+  ['team-support', 'who-to-ask'],
+]);
+export function starterQuickQuestions() {
+  const personal = generalChips().filter((chip) => chip.kind === 'personal');
+  return Object.fromEntries(
+    tracks.map((track) => [
+      track,
+      [
+        ...starterChipSteps.map(([areaId, slug]) => {
+          const { askAlya } = starterStepsByTrack[track][areaId].find((s) => s.slug === slug);
+          return { id: slug, label: askAlya, question: askAlya, kind: 'knowledge' };
+        }),
+        ...personal,
+      ],
+    ]),
+  );
 }

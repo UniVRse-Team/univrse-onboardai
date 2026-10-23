@@ -26,12 +26,15 @@ import {
   descriptionText,
   resourceLabel,
 } from './learning-area-model.mjs';
+import CompanyDocuments from './CompanyDocuments';
+import { documentsForArea } from './company-documents-model.mjs';
 import './learning-areas.css';
 
 function LearningTask({
   step,
   areaId,
   content,
+  companyDocuments,
   contentState,
   records,
   onRecords,
@@ -181,6 +184,7 @@ function LearningTask({
             <PolicyDocumentButton
               stepId={step.id}
               document={content?.policies?.[step.id]?.document}
+              companyDocuments={companyDocuments}
             />
           )}
           {primary && (
@@ -230,7 +234,14 @@ function LearningTask({
   );
 }
 
-export default function LearningArea({ area, onUpdated, firstDay, expanded, navigate }) {
+export default function LearningArea({
+  area,
+  onUpdated,
+  firstDay,
+  expanded,
+  navigate,
+  companyDocuments,
+}) {
   const summary = learningSummary(area);
   const [profile, setProfile] = useState(null),
     [profileError, setProfileError] = useState(''),
@@ -378,10 +389,16 @@ export default function LearningArea({ area, onUpdated, firstDay, expanded, navi
             </p>
           </>
         )}
+        <CompanyDocuments
+          documents={documentsForArea(companyDocuments?.documents, area.id)}
+          state={companyDocuments?.status}
+          retry={area.id === 'policies' ? companyDocuments?.retry : undefined}
+        />
         {area.steps.map((step) => (
           <LearningTask
             key={step.id}
             step={step}
+            companyDocuments={companyDocuments?.documents}
             areaId={area.id}
             content={content}
             contentState={stateWithRetry}

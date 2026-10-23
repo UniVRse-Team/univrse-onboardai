@@ -32,20 +32,31 @@ step). This page describes how the server implements it.
 
 ## Data model (Firestore, Admin SDK only)
 
-| Document                         | Holds                                                                                                                                                                                 |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `onboardingTemplates/{track}`    | `{ track, version: 2, threshold: 70, areas: [{ id, icon, title, description, steps: [Step] }] }`. Seeded by 001, upgraded by 003; built-in fallback                                   |
-| `onboardingProgress/{accountId}` | `{ accountId, updatedAt, steps: { [stepId]: { status?: "submitted" \| "done", updatedAt, source, actorId, briefedAt?, briefedBy?: "listened" \| "read" } } }`. No status means "todo" |
-| `config/quickQuestions`          | `{ employee: [Chip], intern: [Chip], contractor: [Chip] }`. Seeded by migration 002; built-in fallback                                                                                |
-| `employeeFirstDay/{accountId}`   | `{ location, arrivalTime, hostName, hostContact, notes, updatedAt, updatedBy }`, entered by HR                                                                                        |
-| `supportRequests/{id}`           | One confirmed request per employee and answer (see [Support requests](#support-requests-d1-option-a))                                                                                 |
-| `knowledgeGaps/{id}`             | `{ questionRedacted, topic, track, nearestSource, createdDay }`, with no account id, conversation id or time of day                                                                   |
-| `agentActions/{id}`              | A proposed checklist change (see [Checklist agent](#checklist-agent-51)); ids and status only, never message text                                                                     |
+| Document                              | Holds                                                                                                                                                                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `onboardingTemplates/{track}`         | `{ track, version: 2, threshold: 70, areas: [{ id, icon, title, description, steps: [Step] }] }`. Seeded by 001, upgraded by 003; built-in fallback. Luna Digital's (and `univrse`'s) only                                |
+| `onboardingTemplates/starter.{track}` | The same shape, `version: 1` (`starterTemplateVersion`), for every other company. Seeded by 011; `starterTemplate` fallback                                                                                               |
+| `onboardingProgress/{accountId}`      | `{ accountId, updatedAt, steps: { [stepId]: { status?: "submitted" \| "done", updatedAt, source, actorId, briefedAt?, briefedBy?: "listened" \| "read" } } }`. No status means "todo"                                     |
+| `config/quickQuestions`               | `{ employee: [Chip], intern: [Chip], contractor: [Chip] }`. Seeded by migration 002; built-in fallback. An optional `"starter.<track>"` list is the starter companies' (none is seeded; `starterQuickQuestions` fallback) |
+| `employeeFirstDay/{accountId}`        | `{ location, arrivalTime, hostName, hostContact, notes, updatedAt, updatedBy }`, entered by HR                                                                                                                            |
+| `supportRequests/{id}`                | One confirmed request per employee and answer (see [Support requests](#support-requests-d1-option-a))                                                                                                                     |
+| `knowledgeGaps/{id}`                  | `{ questionRedacted, topic, track, nearestSource, createdDay }`, with no account id, conversation id or time of day                                                                                                       |
+| `agentActions/{id}`                   | A proposed checklist change (see [Checklist agent](#checklist-agent-51)); ids and status only, never message text                                                                                                         |
 
 - The track is the profile's `job.track` (`employee`, `intern` or `contractor`, stored in lower
   case; empty means `employee`). HR sets it in Add employee and Edit profile.
 - Every query filters on a single field (`accountId` or `status`); sorting and grouping happen
   in memory, so no composite index is needed.
+- **The template follows the employee's company (issue #126).** `templateDocId(companyId, track)`
+  (`server/companies.mjs`) names the document: `<track>` for `luna-digital` and `univrse`,
+  `starter.<track>` for every other company; a missing `companyId` is `luna-digital`. The
+  employee routes use the signed-in account's company; HR's views of an employee (detail, the
+  employee list's percent, step verification, tool-access confirmation) and a document
+  submission's sync use the employee's company. A stored template must reach its own pack's
+  version (`templateVersion` for Luna Digital, `starterTemplateVersion` for the starter pack);
+  older, missing or malformed ones fall back to `builtInTemplate` or `starterTemplate`. The cache
+  is keyed by the document id, so the packs never share an entry. The checklist agent's proposals
+  are matched against the same template (`onboardai_template_id` in its session state).
 - Templates and the chip config are cached for 60 seconds per server. A stored document that is
   missing or malformed (wrong area order, an area without a required step, an unknown completion
   type, a check missing on a `check` step) is replaced by the built-in seed, and a log line says
@@ -62,7 +73,7 @@ step). This page describes how the server implements it.
     like `003_onboarding_templates_v2.mjs`. That migration is idempotent, keeps a template already
     at or above the version, and never touches `onboardingProgress`, because step ids are stable.
 - The api also never serves a stored template older than the built-in one. It uses the built-in
-  version and logs `Onboarding template <track> is version N; the built-in version M is used`.
+  version and logs `Onboarding template <document id> is version N; the built-in version M is used`.
   This way the api has the new content even before the migration runs. The checklist agent reads
   the stored template, so it needs the migration.
 - Log lines name the operation and Firestore status only. Storage failures on these routes
@@ -275,7 +286,17 @@ asking the step's `askAlya` question), then the track's general chips: personal 
 what time do I report on day 1?", "Who will meet me on my first day?") up to the day after the
 start date, or when there is none, and knowledge ones ("Explain the company background", "What
 are the working hours?", "What's the dress code?") after that, filled from the other kind. Days
-are company calendar days (Asia/Kuala_Lumpur).
+are company calendar days (Asia/Kuala_Lumpur). A general chip asking the same question as the
+next-step chip is skipped.
+
+Chips follow the company's content pack too (issue #126). Starter companies get
+`starterQuickQuestions()`: the knowledge chips `company-overview`, `company-rules` and
+`who-to-ask`, whose questions are exactly the `askAlya` of the starter steps
+`alignment.company-overview`, `policies.company-rules` and `team-support.who-to-ask` (so a helpful
+answer still records that step's briefing), and the same two personal chips. A task's chips
+(`?stepId=`) add Luna Digital's related questions (`stepQuestions`) only for Luna Digital; a
+starter task offers its own question only. A chat turn's `quickQuestionId` resolves only against
+the employee's own pack.
 
 A chat turn names its chip with `quickQuestionId`. Only an employee's own chips count; anything
 else is an ordinary question with `quickQuestionId: null`. Knowledge and step chips take the

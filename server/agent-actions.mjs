@@ -140,8 +140,10 @@ export function createAgentActions({
     agent.remove({ accountId: doc.accountId, sessionId: doc.agentSessionId }).catch(() => {});
 
   // Pending actions of this account that are past their time become expired,
-  // and their agent sessions are deleted. Best effort.
-  async function expireOld(accountId) {
+  // and their agent sessions are deleted. Best effort. `account` is the
+  // signed-in employee ({ id, companyId, ... }).
+  async function expireOld(account) {
+    const accountId = account.id;
     try {
       const at = now().toISOString();
       const found = await guarded('read agent actions', async () =>
@@ -156,7 +158,7 @@ export function createAgentActions({
         await forget(doc);
         await chatMemory()
           .amendMessage(owner(accountId), doc.conversationId, doc.messageId, {
-            proposedAction: { ...(await viewOf(doc, accountId)), status: 'expired' },
+            proposedAction: { ...(await viewOf(doc, account)), status: 'expired' },
           })
           .catch(() => {});
       }
@@ -164,10 +166,10 @@ export function createAgentActions({
       log('Checklist agent: expiring old proposals failed.');
     }
   }
-  async function viewOf(doc, accountId) {
-    const account = { id: accountId, role: 'employee' };
+  // The step names come from the employee's own company's template (#126).
+  async function viewOf(doc, account) {
     const track = await journey.trackFor(account);
-    return proposedActionView(doc, await journey.template(track));
+    return proposedActionView(doc, await journey.template(account.companyId, track));
   }
 
   // A chat turn the plan (or the heuristic) routed to the agent. Resolves to
@@ -181,7 +183,7 @@ export function createAgentActions({
         proposedAction: null,
       };
     }
-    await expireOld(account.id);
+    await expireOld(account);
     const track = await journey.trackFor(account);
     let outcome;
     try {
@@ -212,7 +214,7 @@ export function createAgentActions({
         proposedAction: null,
       };
     }
-    const template = await journey.template(track);
+    const template = await journey.template(account.companyId, track);
     const found = findStep(template, outcome.confirmation.stepId);
     const newStatus = found ? newStatusOf(found.step, found.area.id) : null;
     const documentStep = Boolean(found) && needsDocument(found.area.id, found.step);
@@ -317,7 +319,7 @@ export function createAgentActions({
       await forget(claimed.doc);
       await chatMemory()
         .amendMessage(owner(account.id), claimed.doc.conversationId, claimed.doc.messageId, {
-          proposedAction: await viewOf(claimed.doc, account.id),
+          proposedAction: await viewOf(claimed.doc, account),
         })
         .catch(() => {});
     }
@@ -348,7 +350,7 @@ export function createAgentActions({
       throw agentActionErrors.agentUnavailable();
     }
     await forget(doc);
-    const action = await viewOf(doc, account.id);
+    const action = await viewOf(doc, account);
     const reply = outcome.text || fallbackReply[status];
     const memory = chatMemory();
     try {

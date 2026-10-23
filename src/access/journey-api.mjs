@@ -50,6 +50,7 @@ export const journeyApi = {
   decideAction: (actionId, decision, options) =>
     post('/api/me/agent-actions/' + enc(actionId), { decision }, options),
   getPolicyHandbook: (options) => accountRequest('/api/me/company-policy-handbook', options),
+  companyDocuments: (options) => accountRequest('/api/me/company-documents', options),
   getVerifications: (options) => accountRequest('/api/me/task-verifications', options),
   submitVerification: (areaId, activityId, body, options) =>
     changes(

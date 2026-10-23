@@ -342,7 +342,8 @@ export function addDays(day, days) {
 //   1. the next-step chip "step:<stepId>" when the next step has an askAlya;
 //   2. general chips from config: personal ones up to the day after the start
 //      date (or when there is no start date), knowledge ones after that;
-//   3. filled up to 3 from the other kind.
+//   3. filled up to 3 from the other kind; never a second chip with the same
+//      question.
 // The chips for one task: its own question first, then related ones (at most `limit`).
 export function taskChips({ template, stepId, questions = [], limit = 3 }) {
   const found = findStep(template, stepId);
@@ -388,6 +389,10 @@ export function selectChips({ onboarding, chips, startDate, today, limit = 3 }) 
   ];
   for (const chip of ordered) {
     if (out.length >= limit) break;
+    // A general chip asking the next-step chip's own question is not repeated
+    // (the starter pack's general chips are step questions, issue #126).
+    if (out.some((c) => normalizeQuestion(c.question) === normalizeQuestion(chip.question)))
+      continue;
     out.push({
       id: chip.id,
       label: chip.label,

@@ -2,7 +2,19 @@
 // the extra category 'additional' ("Other useful guidance", not listed here).
 // The ids match the onboarding template areas. Each area holds any number of
 // documents. A document's title is its own, never the area's.
-export const onboardingDocumentTopics = [
+// The one source of truth for the order of the five areas. My Onboarding
+// (server/onboarding-content.mjs re-exports it) and the HR Company
+// Documentation page both follow it, so "1. Documentation" is area #1 in both.
+// Browser-safe: the frontend imports this file directly.
+export const areaOrder = Object.freeze([
+  'documentation',
+  'policies',
+  'alignment',
+  'role-tools',
+  'team-support',
+]);
+
+const topicsById = [
   {
     id: 'alignment',
     title: 'Company Purpose & Alignment',
@@ -36,6 +48,10 @@ export const onboardingDocumentTopics = [
     icon: 'shield',
   },
 ];
+
+export const onboardingDocumentTopics = areaOrder.map((id) =>
+  topicsById.find((topic) => topic.id === id),
+);
 
 // The category ids a document can have.
 export const documentCategories = [

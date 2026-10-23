@@ -269,6 +269,8 @@ ProfileSummary  { fullName, preferredName, jobTitle, department, startDate }
 | `POST /api/auth/sign-out`                                      | optional                        | none                                                                                                      | 204, session deleted, cookie cleared                                                                                                                                     | none                                                                                                                                                                                                              |
 | `POST /api/auth/password`                                      | any; forced change allowed      | `{ currentPassword, newPassword }`                                                                        | 200 `{ account: SessionAccount }` and a new cookie                                                                                                                       | 400 `PASSWORD_CHANGE_INVALID`, `CURRENT_PASSWORD_INCORRECT` (counts toward the lock), `PASSWORD_REJECTED` (the message says which rule); 429 `ACCOUNT_LOCKED` (locked: no password is checked; the session stays) |
 | `GET /api/me/profile`                                          | any                             | none                                                                                                      | 200 `{ profile: Profile \| null }` (null for HR accounts without a profile)                                                                                              |                                                                                                                                                                                                                   |
+| `GET /api/me/company-documents`                                | employee                        | none                                                                                                      | 200 `{ documents: [CompanyDocument] }`; see [Employees' company documents](#employees-company-documents-issue-126)                                                       | 403 `EMPLOYEE_ROLE_REQUIRED`; 503 `COMPANY_DOCUMENTS_UNAVAILABLE`                                                                                                                                                 |
+| `GET /api/me/company-documents/:id/file`                       | employee                        | none                                                                                                      | 200 the file's bytes (`Cache-Control: private, no-store`); see [Employees' company documents](#employees-company-documents-issue-126)                                    | 403 `EMPLOYEE_ROLE_REQUIRED`; 404 `DOCUMENT_NOT_FOUND`; 503 `COMPANY_DOCUMENTS_UNAVAILABLE`                                                                                                                       |
 | `GET /api/hr/employees`                                        | HR                              | none                                                                                                      | 200 `{ employees: [{ account: EmployeeAccount, profile: ProfileSummary \| null, track, onboarding: { percent, waitingOnHr, complete } }] }`, by ID, at most 500          |                                                                                                                                                                                                                   |
 | `POST /api/hr/employees`                                       | HR                              | `{ profile: ProfileInput }` (nothing else)                                                                | 201 `{ employee: { account: EmployeeAccount, profile: Profile }, temporaryPassword }`; see [Employee IDs and temporary passwords](#employee-ids-and-temporary-passwords) | 400 `EMPLOYEE_INVALID` (not an object, or any key but `profile`, such as `username` or `temporaryPassword`), `PROFILE_INVALID` (`job.department` `required` or `invalid_department` among them)                   |
 | `GET /api/hr/employees/:id`                                    | HR                              | none                                                                                                      | 200 `{ employee: { account, profile: Profile \| null } }`                                                                                                                | 404 `EMPLOYEE_NOT_FOUND` (unknown, not a UUID, or an HR account)                                                                                                                                                  |
@@ -553,10 +555,12 @@ KnowledgeSnapshot {
 
 - **Areas** (issue #68): the library is the five onboarding areas, each a folder holding any number
   of documents, plus `additional` ("Other useful guidance"). `topics` lists the areas
-  (`server/onboarding-document-topics.mjs`): `alignment` (Company Purpose & Alignment, icon
-  `planet`), `documentation` (Documentation, `checklist`), `team-support` (People & Workplace
-  Support, `people`), `role-tools` (Role, Tools & AI Readiness, `laptop`) and `policies`
-  (Policies & Safe Practices, `shield`). The ids match the onboarding template areas. A document's
+  in the My Onboarding order (`areaOrder`, defined once in `server/onboarding-document-topics.mjs`
+  and re-exported by `server/onboarding-content.mjs`, so the HR page numbers them like the
+  checklist; issue #128): `documentation` (Documentation, icon `checklist`), `policies` (Policies
+  & Safe Practices, `shield`), `alignment` (Company Purpose & Alignment, `planet`), `role-tools`
+  (Role, Tools & AI Readiness, `laptop`) and `team-support` (People & Workplace Support,
+  `people`). The ids match the onboarding template areas. A document's
   `category` is an area id or `additional`. The six earlier topic ids (`company`, `handbook`,
   `first-week`, `role`, `it`, `communication`) are retired; Firestore migration
   `004_company_documents_areas` re-files them (`company` to `alignment`, `handbook` to `policies`,
@@ -684,6 +688,43 @@ KnowledgeSnapshot {
 - **Drift**: the three stores are written one after another, so a failure between them can leave
   an object or an indexed document without an entry. `npm run docs:reconcile` reports and repairs
   that drift; see [Document reconciliation](document-reconciliation.md).
+
+### Employees' company documents (issue #126)
+
+An employee opens their own company's documents from My Onboarding
+(`server/employee-company-documents.mjs`, mounted on `/api/me` with the employee guard;
+`server/company-document-files.mjs` reads the bucket).
+
+- `GET /api/me/company-documents` lists the **active** `companyDocuments` entries of the
+  signed-in account's `companyId` (none: `luna-digital`), sorted by area (`documentation`,
+  `policies`, `alignment`, `role-tools`, `team-support`, `additional`; anything else last), then
+  title (numeric-aware, case-insensitive):
+
+  ```text
+  CompanyDocument { id, title, category, fileName, uploadedAt: ISO 8601|null, viewUrl }
+  { "documents": [ { "id": "<entry id>", "title": "02 Company Handbook", "category": "policies",
+      "fileName": "02 Company Handbook.docx", "uploadedAt": "2026-10-23T13:42:10.000Z",
+      "viewUrl": "/api/me/company-documents/<entry id>/file" } ] }
+  ```
+
+  `category` is as stored; `uploadedAt` is the entry's `connectedAt`. Never the text, the object
+  name, the bucket, the company id or a Vertex AI Search id.
+
+- `GET /api/me/company-documents/:id/file` sends the object the upload wrote
+  (`objectName`, or `gcsObjectName(id, fileName, companyId)` for older entries) from
+  `DOCS_BUCKET`, read with the api's credentials: `Content-Type` by the object's extension
+  (`application/pdf`, the Word type, otherwise `text/plain; charset=utf-8`: text and Markdown
+  uploads are stored as their UTF-8 text), `Content-Disposition: inline; filename*=UTF-8''<fileName>`,
+  `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff`. The web service proxy
+  streams it like any other answer.
+- `404 DOCUMENT_NOT_FOUND` for every id that is not an active entry of the account's own
+  company (another company's, retired, unknown or malformed), and for an entry whose object is
+  gone. `503 COMPANY_DOCUMENTS_UNAVAILABLE` when Firestore or the bucket fails or times out, or
+  without `DOCS_BUCKET` (the list still works then). HR, admin and signed-out requests get the
+  session table's errors.
+- The local preview (`npm run dev:preview`) and the tests keep uploads in memory
+  (`createMemoryCompanyDocumentFiles`, passed as `companyDocumentSync` and
+  `companyDocumentFiles`), so View works without a bucket.
 
 ### Account chats and the company library
 

@@ -67,10 +67,11 @@ export function createDocumentSubmissions({
       throw notFound();
     return data;
   }
-  const sync = async (accountId) => {
+  // companyId: the employee's company, so the step list is that company's (#126).
+  const sync = async (accountId, companyId) => {
     // Step progress follows the reviews. A failed sync is healed by the next read.
     try {
-      await onboarding?.syncDocuments?.(accountId);
+      await onboarding?.syncDocuments?.(accountId, companyId);
     } catch {
       // The submission and review are saved; progress catches up on the next read.
     }
@@ -168,7 +169,7 @@ export function createDocumentSubmissions({
         await files.remove(record.id).catch(() => {});
         throw error;
       }
-      await sync(account.id);
+      await sync(account.id, record.companyId);
       return record;
     },
     async download(account, id) {
@@ -212,7 +213,7 @@ export function createDocumentSubmissions({
         tx.set(ref, updated);
         return updated;
       });
-      await sync(reviewed.employeeAccountId);
+      await sync(reviewed.employeeAccountId, reviewed.companyId || account.companyId);
       return reviewed;
     },
     async eraseEmployee(id) {
