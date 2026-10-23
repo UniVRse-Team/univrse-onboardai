@@ -506,7 +506,7 @@ export default function OnboardingWebsite() {
       <LoginPage
         accounts={session.accounts === true}
         onSignIn={session.signIn}
-        onSignOut={session.signOut}
+        onSignOut={session.discardSignIn}
         sessionNotice={session.notice}
         navigate={navigate}
         tenantCompanyId={tenant?.companyId || null}
@@ -516,7 +516,11 @@ export default function OnboardingWebsite() {
   if (isAdminArea(path)) {
     if (!account) {
       return (
-        <AdminSignIn onSignIn={session.signIn} onSignOut={session.signOut} navigate={navigate} />
+        <AdminSignIn
+          onSignIn={session.signIn}
+          onSignOut={session.discardSignIn}
+          navigate={navigate}
+        />
       );
     }
     return (

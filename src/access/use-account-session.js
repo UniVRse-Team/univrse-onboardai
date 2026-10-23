@@ -6,6 +6,7 @@ import {
   subscribeAccountErrors,
 } from './account-api.mjs';
 import { afterAccountAction, sessionCheckOutcome } from './account-routing.mjs';
+import { shouldNavigateAfterSignOut, signedOutPath } from './sign-out-destination.mjs';
 
 export function filterAccountByPath(
   account,
@@ -37,7 +38,9 @@ export default function useAccountSession({ onNavigate }) {
         account: result.account,
         notice: result.notice ? signInNotice : s.notice,
       }));
-      if (result.to) navigateRef.current(result.to);
+      if (result.to) {
+        navigateRef.current(action === 'sign-in' ? signedOutPath(accountRef.current) : result.to);
+      }
     });
     (async () => {
       let accounts = false;
@@ -89,7 +92,7 @@ export default function useAccountSession({ onNavigate }) {
           const outcome = result.network ? { type: 'ok' } : sessionCheckOutcome(current, result);
           if (outcome.type === 'expired') {
             setState((s) => ({ ...s, account: null, notice: signInNotice }));
-            navigateRef.current('/login');
+            navigateRef.current(signedOutPath(current));
           } else if (outcome.type === 'update')
             setState((s) => ({ ...s, account: outcome.account }));
           return outcome.type !== 'expired';
@@ -138,13 +141,16 @@ export default function useAccountSession({ onNavigate }) {
     },
     [refreshConfig],
   );
-  const signOut = useCallback(async () => {
+  const signOut = useCallback(async (options) => {
+    const previous = accountRef.current;
     try {
       await accountApi.signOut();
     } catch {}
     setState((s) => ({ ...s, account: null, notice: '' }));
-    navigateRef.current('/login');
+    if (shouldNavigateAfterSignOut(options)) navigateRef.current(signedOutPath(previous));
   }, []);
+  // Ends a session the sign-in page itself rejected, staying put to show why.
+  const discardSignIn = useCallback(() => signOut({ navigate: false }), [signOut]);
 
-  return { ...state, signIn, changePassword, signOut };
+  return { ...state, signIn, changePassword, signOut, discardSignIn };
 }
