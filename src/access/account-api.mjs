@@ -107,6 +107,7 @@ export async function accountRequest(
 
 const enc = encodeURIComponent;
 export const accountApi = {
+  config: (options) => accountRequest('/api/config', options),
   session: (options) => {
     const scope =
       options?.scope ||
