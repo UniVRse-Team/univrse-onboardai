@@ -46,10 +46,11 @@ export function vertexSearchUrl(config) {
 
 // pageSize: SEARCH_PAGE_SIZE unless the caller asks for another whole number
 // of results (the retrieval allowlist asks for 10, see
-// active-company-documents.mjs). options can also specify companyId.
+// active-company-documents.mjs). options can also specify companyId and
+// relevanceThreshold ('LOWEST' only; omitted otherwise).
 export function searchRequestBody(query, options = {}) {
   const opts = typeof options === 'string' ? { companyId: options } : options || {};
-  const { pageSize, companyId = null } = opts;
+  const { pageSize, companyId = null, relevanceThreshold = null } = opts;
   return {
     query,
     pageSize:
@@ -61,6 +62,8 @@ export function searchRequestBody(query, options = {}) {
       chunkSpec: { numPreviousChunks: NEIGHBOUR_CHUNKS, numNextChunks: NEIGHBOUR_CHUNKS },
     },
     ...(companyId ? { filter: `companyId: ANY("${companyId}")` } : {}),
+    // Only 'LOWEST' is supported: the zero-result retry (see createVertexSearch).
+    ...(relevanceThreshold === 'LOWEST' ? { relevanceThreshold: 'LOWEST' } : {}),
   };
 }
 
@@ -288,8 +291,8 @@ async function googleReason(response) {
   }
 }
 
-// Returns search(query, { signal, pageSize, companyId }) -> passages. One bounded request per call and
-// no automatic retries, matching the Gemini client.
+// Returns search(query, { signal, pageSize, companyId }) -> passages. One bounded request per call; the only
+// retry is one LOWEST-threshold request after a response with zero results.
 export function createVertexSearch({
   config,
   fetchImpl = fetch,
@@ -345,27 +348,36 @@ export function createVertexSearch({
     } catch {
       throw stopped() ?? fail('SEARCH_AUTH_REQUIRED');
     }
-    let response, data;
-    try {
-      response = await fetchImpl(vertexSearchUrl(config), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(searchRequestBody(question, { pageSize, companyId })),
-        signal: bounded,
-      });
-      if (!response.ok) {
-        const { reason, message } = await googleReason(response);
-        throw fail(codeForStatus(response.status), {
-          upstreamStatus: response.status,
-          reason,
-          upstreamMessage: message,
+    const post = async (relevanceThreshold) => {
+      try {
+        const response = await fetchImpl(vertexSearchUrl(config), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(
+            searchRequestBody(question, { pageSize, companyId, relevanceThreshold }),
+          ),
+          signal: bounded,
         });
+        if (!response.ok) {
+          const { reason, message } = await googleReason(response);
+          throw fail(codeForStatus(response.status), {
+            upstreamStatus: response.status,
+            reason,
+            upstreamMessage: message,
+          });
+        }
+        return await response.json();
+      } catch (error) {
+        if (error instanceof CompanySearchError) throw error;
+        throw stopped() ?? fail('SEARCH_UNAVAILABLE');
       }
-      data = await response.json();
-    } catch (error) {
-      if (error instanceof CompanySearchError) throw error;
-      throw stopped() ?? fail('SEARCH_UNAVAILABLE');
-    }
+    };
+    let data = await post();
+    // Vertex's default relevance cut-off can drop every chunk of a company's
+    // documents for a query that has no company name in it. When nothing came
+    // back, ask once more with the lowest cut-off: same query, page size and
+    // company filter, so isolation is unchanged. Not retried when anything came back.
+    if (!(Array.isArray(data?.results) && data.results.length > 0)) data = await post('LOWEST');
     return passagesFromSearch(data, companyId, log);
   }
 }

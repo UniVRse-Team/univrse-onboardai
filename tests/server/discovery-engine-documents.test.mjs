@@ -14,7 +14,8 @@ import {
   dataStoreDocumentsUrl,
   discoveryEngineOperationUrl,
   documentsListUrl,
-  explicitImportBody,
+  documentSummary,
+  taggedImportBody,
   extensionOf,
   gcsListUrl,
   gcsObjectName,
@@ -132,25 +133,60 @@ test('Discovery Engine and Cloud Storage URLs honour the location and encode nam
   );
 });
 
-test('an explicit import names 1 to 100 object URIs, INCREMENTAL, never a wildcard or prefix', () => {
+test('a tagged import is inline, INCREMENTAL, 1 to 100 explicit gs:// documents with a valid companyId', () => {
   const uri = `gs://demo-bucket/${id}/Guide.pdf`;
-  assert.deepEqual(explicitImportBody([uri]), {
-    gcsSource: { inputUris: [uri], dataSchema: 'content' },
+  assert.deepEqual(taggedImportBody([{ id, uri, companyId: 'seri-bayu-digital' }]), {
+    inlineSource: {
+      documents: [
+        {
+          id,
+          structData: { companyId: 'seri-bayu-digital' },
+          content: { mimeType: 'application/pdf', uri },
+        },
+      ],
+    },
     reconciliationMode: 'INCREMENTAL',
   });
+  assert.equal(
+    taggedImportBody([{ id, uri: 'gs://b/x/y.docx', companyId: 'luna-digital' }]).inlineSource
+      .documents[0].content.mimeType,
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  );
+  assert.equal(
+    taggedImportBody([{ id, uri: 'gs://b/x/y.txt', companyId: 'luna-digital' }]).inlineSource
+      .documents[0].content.mimeType,
+    'text/plain; charset=utf-8',
+  );
+  const one = { id, uri, companyId: 'luna-digital' };
   for (const bad of [
     [],
-    ['gs://demo-bucket/**'],
-    ['gs://demo-bucket/folder/'],
-    ['gs://demo-bucket'],
+    [{ ...one, uri: 'gs://demo-bucket/**' }],
+    [{ ...one, uri: 'gs://demo-bucket/folder/' }],
+    [{ ...one, uri: 'gs://demo-bucket' }],
+    [{ ...one, companyId: undefined }],
+    [{ ...one, companyId: 'Bad Company' }],
+    [{ ...one, id: '' }],
+    [{ ...one, id: 'a/b' }],
   ])
-    assert.throws(() => explicitImportBody(bad));
-  assert.throws(() => explicitImportBody(Array.from({ length: 101 }, (_, i) => `${uri}${i}`)));
+    assert.throws(() => taggedImportBody(bad));
+  assert.throws(() => taggedImportBody(Array.from({ length: 101 }, () => one)));
   assert.equal(
-    explicitImportBody(Array.from({ length: 100 }, (_, i) => `${uri}${i}`)).gcsSource.inputUris
-      .length,
+    taggedImportBody(Array.from({ length: 100 }, () => one)).inlineSource.documents.length,
     100,
   );
+});
+
+test('documentSummary carries structData.companyId, or null when untagged', () => {
+  const base = { name: 'projects/p/documents/d1', content: { uri: 'gs://b/x' }, indexTime: 't' };
+  assert.deepEqual(documentSummary({ ...base, structData: { companyId: 'luna-digital' } }), {
+    id: 'd1',
+    uri: 'gs://b/x',
+    indexTime: 't',
+    companyId: 'luna-digital',
+  });
+  assert.equal(documentSummary(base).companyId, null);
+  assert.equal(documentSummary({ ...base, structData: { companyId: 7 } }).companyId, null);
+  assert.equal(documentSummary({ ...base, structData: {} }).companyId, null);
 });
 
 test('the documents list follows nextPageToken and throws on a failed or looping page', async () => {
@@ -171,8 +207,8 @@ test('the documents list follows nextPageToken and throws on a failed or looping
     return Response.json(pages[new URL(url).searchParams.get('pageToken') ?? '']);
   };
   assert.deepEqual(await listDataStoreDocuments({ request, config }), [
-    { id: 'd1', uri: 'gs://b/1', indexTime: 't' },
-    { id: 'd2', uri: 'gs://b/2', indexTime: null },
+    { id: 'd1', uri: 'gs://b/1', indexTime: 't', companyId: null },
+    { id: 'd2', uri: 'gs://b/2', indexTime: null, companyId: null },
   ]);
   assert.deepEqual(
     urls.map((url) => new URL(url).search),

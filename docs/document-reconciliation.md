@@ -67,24 +67,40 @@ An **active** entry (`status` missing or `active`) with a file name expects one 
 `.md` and other unparsed types as `.txt`), and one Vertex document,
 whose ID is the first 32 hex characters of SHA-256 of `gs://<bucket>/<object name>`.
 
+## One-off repair
+
+To tag documents that lost or never had their `companyId` (the report shows `untaggedIndex` > 0),
+run the job once in apply mode, then check the next report is clean:
+
+```bash
+gcloud run jobs execute onboardai-docs-reconcile[-staging] --region asia-southeast1 \
+  --args=scripts/reconcile-company-documents.mjs,--apply --wait
+```
+
 ## Item kinds
 
-| Kind               | When                                                                                                                                            | Action with `--apply`                                                                                                                                           |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vertex_orphan`    | A Vertex document whose URI is not the expected URI of an active entry and is not unmanaged, for example a root-level file whose object is gone | `delete_vertex` (404 counts as done). For a `<document id>/` URI, Firestore is read again first and the item is `skipped` if that entry now expects it          |
-| `vertex_duplicate` | More than one Vertex document for one expected URI                                                                                              | `delete_vertex` each one except the one whose ID is the URI hash (when none has it, the lowest ID is kept)                                                      |
-| `gcs_orphan`       | A live object under `<document id>/` whose ID has no active entry, or whose name is not that entry's expected name                              | `delete_gcs` (bucket versioning keeps it 30 days). Re-checked in Firestore first, like a `vertex_orphan`. With `--skip-gcs`: result `skipped`                   |
-| `missing_index`    | An active entry and its live object, but no Vertex document                                                                                     | `reimport`: `documents:import` of explicit URIs only (at most 100 per call), `dataSchema: content`, `INCREMENTAL`; the operation is polled for up to 10 minutes |
-| `missing_object`   | An active entry with a file name and no live object                                                                                             | none: HR must upload the file again                                                                                                                             |
-| `retired_entry`    | An entry with `status: retired` (a replaced version whose clean-up did not finish). Its object and Vertex document are orphans                  | none                                                                                                                                                            |
-| `pending`          | Anything younger than the grace period (a retired entry by `retiredAt`), or a Vertex document without `indexTime`                               | none                                                                                                                                                            |
-| `unmanaged`        | A live object outside the `<document id>/` namespace, with or without a Vertex document (one item per URI)                                      | none, ever. Never deleted, never counted toward a safety stop or the exit code                                                                                  |
+| Kind               | When                                                                                                                                                                                                                                              | Action with `--apply`                                                                                                                                                                                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vertex_orphan`    | A Vertex document whose URI is not the expected URI of an active entry and is not unmanaged, for example a root-level file whose object is gone                                                                                                   | `delete_vertex` (404 counts as done). For a `<document id>/` URI, Firestore is read again first and the item is `skipped` if that entry now expects it                                                                                                                    |
+| `vertex_duplicate` | More than one Vertex document for one expected URI                                                                                                                                                                                                | `delete_vertex` each one except the one whose ID is the URI hash (when none has it, the lowest ID is kept)                                                                                                                                                                |
+| `gcs_orphan`       | A live object under `<document id>/` whose ID has no active entry, or whose name is not that entry's expected name                                                                                                                                | `delete_gcs` (bucket versioning keeps it 30 days). Re-checked in Firestore first, like a `vertex_orphan`. With `--skip-gcs`: result `skipped`                                                                                                                             |
+| `missing_index`    | An active entry and its live object, but no Vertex document                                                                                                                                                                                       | `reimport`: inline `documents:import` of explicit gs:// URIs only (at most 100 per call), each document carrying `id` (the Firestore entry id), `structData.companyId`, `content.uri` and `content.mimeType`, `INCREMENTAL`; the operation is polled for up to 10 minutes |
+| `untagged_index`   | The Vertex document of an active entry has no `structData.companyId`, or one other than its entry's company (an entry without a company counts as the default company). Chat searches filter on that tag, so the company cannot find the document | `retag`: the same inline import, with the existing Vertex document `id`, in place. Not a delete: it does not count toward `--max-deletes`. A document without `indexTime` is `pending` instead; of several documents for one URI only the kept one is checked             |
+| `missing_object`   | An active entry with a file name and no live object                                                                                                                                                                                               | none: HR must upload the file again                                                                                                                                                                                                                                       |
+| `retired_entry`    | An entry with `status: retired` (a replaced version whose clean-up did not finish). Its object and Vertex document are orphans                                                                                                                    | none                                                                                                                                                                                                                                                                      |
+| `pending`          | Anything younger than the grace period (a retired entry by `retiredAt`), or a Vertex document without `indexTime`                                                                                                                                 | none                                                                                                                                                                                                                                                                      |
+| `unmanaged`        | A live object outside the `<document id>/` namespace, with or without a Vertex document (one item per URI)                                                                                                                                        | none, ever. Never deleted, never counted toward a safety stop or the exit code                                                                                                                                                                                            |
 
 - Entries without a file name (Google Docs entries from before issue #35) have no object: they are
   counted in `firestore` and produce no item.
 - Production's legacy `onboarding/*.pdf` files (live and indexed, with no Firestore entry) are
   `unmanaged`: listed, never acted on. If such an object is deleted, its Vertex document becomes a
   `vertex_orphan` (that is the case of staging's four root-level PDFs).
+
+**Tagging.** Every import the job makes is an inline import that carries
+`structData.companyId`; no code path imports an untagged document (a `gcsSource` import would
+leave the tag empty and hide the document from its company's filtered search). `reimported`
+counts `missing_index` items done, `retagged` counts `untagged_index` items done.
 
 **Invariants.** Never `reconciliationMode: FULL`, never a wildcard or prefix URI, never a
 Firestore write. Only items in the printed plan are acted on. A second run after a successful apply
@@ -139,7 +155,7 @@ One line per item:
 }
 ```
 
-- `action`: `delete_vertex` | `delete_gcs` | `reimport` | `none`.
+- `action`: `delete_vertex` | `delete_gcs` | `reimport` | `retag` | `none`.
 - `result`: `planned` (an actionable item in report mode), `done`, `failed`, `skipped` or
   `reported` (a report-only kind).
 - `firestoreId`: the document ID of the entry, or of the `<document id>/` folder the object or URI
@@ -167,12 +183,14 @@ Exactly one summary line, always the last line, also on exits 2 to 4 (zeros for 
   "vertexDuplicates": 0,
   "gcsOrphans": 1,
   "missingIndex": 0,
+  "untaggedIndex": 0,
   "missingObject": 0,
   "retiredEntries": 0,
   "pending": 0,
   "deletedVertex": 0,
   "deletedGcs": 0,
   "reimported": 0,
+  "retagged": 0,
   "failed": 0,
   "unrepaired": 6,
   "durationMs": 2140

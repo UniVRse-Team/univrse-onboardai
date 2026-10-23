@@ -524,7 +524,7 @@ test('the search asks for 5 results unless the allowlisted path asks for 10', as
   await retrieve('leave', { pageSize: ALLOWLIST_PAGE_SIZE });
   assert.deepEqual(
     bodies.map((body) => body.pageSize),
-    [5, 10],
+    [5, 5, 10, 10],
   );
 });
 
