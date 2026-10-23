@@ -17,6 +17,8 @@ import {
   parseCompanyTenantPath,
   isHrArea,
 } from '../access/account-routing.mjs';
+import { accountApi } from '../access/account-api.mjs';
+import { pageTitle } from './page-title.mjs';
 import AdminPortal from '../admin/AdminPortal';
 import AdminSignIn from '../admin/AdminSignIn';
 import { readNotes, writeNotes } from './support-notes.mjs';
@@ -419,20 +421,32 @@ export default function OnboardingWebsite() {
       clearTimeout(toastTimer.current);
     };
   }, []);
+  const tenantId = parseCompanyTenantPath(path)?.companyId || null;
+  const [tenantName, setTenantName] = useState({ id: null, name: '' });
   useEffect(() => {
-    const accessTitle =
-      path === '/' || path === '/login'
-        ? 'Welcome'
-        : path === '/signup'
-          ? 'Create an employee account'
-          : isHrArea(path)
-            ? 'HR workspace'
-            : isAdminArea(path)
-              ? 'Platform Admin'
-              : null;
-    const companyBrand = account?.company?.name || 'OnboardAi';
-    document.title = (accessTitle || active?.label || 'Page not found') + ' · ' + companyBrand;
-  }, [path, account?.role, account?.company?.name]);
+    if (!tenantId) return undefined;
+    let cancelled = false;
+    accountApi
+      .publicCompany(tenantId)
+      .then((data) => {
+        if (!cancelled && data?.company?.name)
+          setTenantName({ id: tenantId, name: data.company.name });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
+  const loadedTenantName = tenantName.id === tenantId ? tenantName.name : '';
+  useEffect(() => {
+    document.title = pageTitle({
+      path,
+      account,
+      active,
+      tenantName: loadedTenantName,
+      changePassword: decision.type === 'change-password',
+    });
+  }, [path, account?.role, account?.company?.name, loadedTenantName, decision.type]);
   useEffect(() => {
     // Sign-in state decides some landing pages; replace so Back does not loop.
     if (decision.type !== 'redirect' || decision.to === path) return;

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { DEFAULT_COMPANY_ID } from './companies.mjs';
+import { DEFAULT_COMPANY_ID, isCompanyId } from './companies.mjs';
 
 // Shared names and URLs for the company documents in the documents bucket and
 // the Vertex AI Search (Discovery Engine) data store. Pure functions only (the
@@ -91,21 +91,51 @@ export function documentsListUrl(config, { pageSize = DOCUMENTS_PAGE_SIZE, pageT
 export const discoveryEngineOperationUrl = (location, name) =>
   `https://${discoveryEngineHost(location)}/v1/${String(name).replace(/^\/+/, '')}`;
 
-// The documents:import body for explicit URIs only: never a wildcard or a
-// prefix, never FULL.
-export function explicitImportBody(uris) {
-  const list = [...uris];
-  if (!list.length || list.length > 100) throw new Error('An import takes 1 to 100 URIs.');
-  for (const uri of list)
-    if (!/^gs:\/\/[^/]+\/.+/.test(uri) || uri.includes('*') || uri.endsWith('/'))
-      throw new Error('An import takes explicit gs:// object URIs only.');
+const importMimeTypes = {
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  html: 'text/html',
+  htm: 'text/html',
+  txt: 'text/plain; charset=utf-8',
+};
+export const mimeTypeOf = (uri) => importMimeTypes[extensionOf(String(uri))] ?? importMimeTypes.txt;
+
+const vertexDocumentIdPattern = /^[A-Za-z0-9_-]{1,63}$/;
+
+// The documents:import body that (re)indexes documents WITH their companyId
+// tag, so the company-filtered search can see them. documents: [{ id, uri,
+// companyId }] - id is the Vertex document id (the Firestore entry id, as the
+// app's upload uses, or the id of the existing document when retagging), uri an
+// explicit gs:// object URI. Inline source with INCREMENTAL reconciliation:
+// never a wildcard or a prefix, never FULL, never an untagged document. The
+// app's upload and the reconcile job share this body.
+export function taggedImportBody(documents) {
+  const list = [...documents];
+  if (!list.length || list.length > 100) throw new Error('An import takes 1 to 100 documents.');
   return {
-    gcsSource: { inputUris: list, dataSchema: 'content' },
+    inlineSource: {
+      documents: list.map(({ id, uri, companyId }) => {
+        if (typeof id !== 'string' || !vertexDocumentIdPattern.test(id))
+          throw new Error('An import takes a valid document id.');
+        if (
+          typeof uri !== 'string' ||
+          !/^gs:\/\/[^/]+\/.+/.test(uri) ||
+          uri.includes('*') ||
+          uri.endsWith('/')
+        )
+          throw new Error('An import takes explicit gs:// object URIs only.');
+        if (!isCompanyId(companyId)) throw new Error('An import takes a valid company id.');
+        return { id, structData: { companyId }, content: { mimeType: mimeTypeOf(uri), uri } };
+      }),
+    },
     reconciliationMode: 'INCREMENTAL',
   };
 }
 
-// A data store document as the list returns it: { id, uri, indexTime }.
+// A data store document as the list returns it: { id, uri, indexTime,
+// companyId } - companyId is structData.companyId, or null when untagged.
 export function documentSummary(document) {
   const id =
     (typeof document?.id === 'string' && document.id) ||
@@ -117,6 +147,10 @@ export function documentSummary(document) {
     id,
     uri: typeof document?.content?.uri === 'string' ? document.content.uri : null,
     indexTime: typeof document?.indexTime === 'string' ? document.indexTime : null,
+    companyId:
+      typeof document?.structData?.companyId === 'string' && document.structData.companyId
+        ? document.structData.companyId
+        : null,
   };
 }
 

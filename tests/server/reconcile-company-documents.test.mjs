@@ -113,6 +113,7 @@ function fakeCloud({ bucket, entries = [], objects = [], docs = [], pageSize = 2
             id: doc.id,
             content: { uri: doc.uri, mimeType: 'application/pdf' },
             ...(doc.indexTime ? { indexTime: doc.indexTime } : {}),
+            ...(doc.companyId ? { structData: { companyId: doc.companyId } } : {}),
           })),
           ...(next ? { nextPageToken: next } : {}),
         });
@@ -125,7 +126,20 @@ function fakeCloud({ bucket, entries = [], objects = [], docs = [], pageSize = 2
       if (method === 'POST' && target.pathname.endsWith('/documents:import')) {
         const name = `projects/demo-project/locations/global/operations/import-${state.operations.size + 1}`;
         let success = 0;
-        for (const uri of call.body.gcsSource.inputUris) {
+        // The app and the job import inline, with the companyId tag; a
+        // gcsSource import would leave the tag out and is not expected.
+        for (const document of call.body.inlineSource?.documents ?? []) {
+          const objectName = document.content.uri.slice(`gs://${bucket}/`.length);
+          if (!state.objects.has(objectName)) continue;
+          state.docs.set(document.id, {
+            id: document.id,
+            uri: document.content.uri,
+            indexTime: new Date(NOW).toISOString(),
+            companyId: document.structData.companyId,
+          });
+          success++;
+        }
+        for (const uri of call.body.gcsSource?.inputUris ?? []) {
           const objectName = uri.slice(`gs://${bucket}/`.length);
           if (!state.objects.has(objectName)) continue;
           state.docs.set(sha32(uri), {
@@ -208,7 +222,12 @@ function library(bucket, count = 8) {
       text: 'Secret legacy synthetic text',
     });
     objects.push({ name, timeCreated: ago(120) });
-    docs.push({ id: sha32(uriIn(bucket, name)), uri: uriIn(bucket, name), indexTime: ago(119) });
+    docs.push({
+      id: sha32(uriIn(bucket, name)),
+      uri: uriIn(bucket, name),
+      indexTime: ago(119),
+      companyId: 'luna-digital',
+    });
   }
   return { entries, objects, docs };
 }
@@ -464,6 +483,7 @@ test('the staging drift fixture: 5 Vertex orphans and 1 GCS orphan, exit 0, ids 
     vertexDuplicates: 0,
     gcsOrphans: 1,
     missingIndex: 0,
+    untaggedIndex: 0,
     missingObject: 0,
     retiredEntries: 0,
     pending: 0,
@@ -895,16 +915,19 @@ test('apply re-imports missing documents with explicit URIs, at most 100 per INC
   );
   const imports = cloud.calls.filter((call) => call.url.endsWith(':import'));
   assert.deepEqual(
-    imports.map((call) => call.body.gcsSource.inputUris.length),
+    imports.map((call) => call.body.inlineSource.documents.length),
     [100, 1],
   );
   for (const { body } of imports) {
-    assert.deepEqual(Object.keys(body).sort(), ['gcsSource', 'reconciliationMode']);
+    assert.deepEqual(Object.keys(body).sort(), ['inlineSource', 'reconciliationMode']);
     assert.equal(body.reconciliationMode, 'INCREMENTAL');
-    assert.equal(body.gcsSource.dataSchema, 'content');
-    for (const uri of body.gcsSource.inputUris) {
+    for (const document of body.inlineSource.documents) {
+      const { uri } = document.content;
       assert.ok(uri.startsWith(`gs://${bucket}/`) && !uri.includes('*') && !uri.endsWith('/'));
       assert.ok(lib.objects.some((o) => uri === uriIn(bucket, o.name)));
+      // The entry id is the document id and the tag is always sent.
+      assert.ok(lib.entries.some((entry) => entry.id === document.id));
+      assert.deepEqual(document.structData, { companyId: 'luna-digital' });
     }
   }
   // The operations were polled to completion.
@@ -1095,8 +1118,8 @@ test('multi-tenant company library: tenant documents reconcile with zero drift a
       { name: name2, timeCreated: ago(60) },
     ],
     docs: [
-      { id: sha32(uri1), uri: uri1, indexTime: ago(59) },
-      { id: sha32(uri2), uri: uri2, indexTime: ago(59) },
+      { id: sha32(uri1), uri: uri1, indexTime: ago(59), companyId },
+      { id: sha32(uri2), uri: uri2, indexTime: ago(59), companyId },
     ],
   });
 
@@ -1139,7 +1162,7 @@ test('multi-tenant company library: tenant documents reconcile with zero drift a
       { name: orphanName, timeCreated: ago(60) },
     ],
     docs: [
-      { id: sha32(uri2), uri: uri2, indexTime: ago(59) },
+      { id: sha32(uri2), uri: uri2, indexTime: ago(59), companyId },
       { id: sha32(orphanUri), uri: orphanUri, indexTime: ago(59) },
     ],
   });
@@ -1170,4 +1193,163 @@ test('multi-tenant company library: tenant documents reconcile with zero drift a
   );
   assert.ok(rechecks.length > 0);
   assert.ok(rechecks[0].url.includes('mask.fieldPaths=companyId'));
+});
+
+// --- #115: the companyId tag on the Vertex documents -------------------------------
+
+function taggedFixture(bucket, companyDocs) {
+  const entries = [];
+  const objects = [];
+  const docs = [];
+  companyDocs.forEach(({ n, companyId, tag, indexTime = ago(119), entryCompany }, i) => {
+    const id = uuid(40 + n);
+    const fileName = `0${i} Guide.docx`;
+    const name =
+      companyId && companyId !== 'luna-digital'
+        ? `companies/${companyId}/${id}/${fileName}`
+        : `${id}/${fileName}`;
+    entries.push({
+      id,
+      fileName,
+      title: 'Guide',
+      category: 'policies',
+      connectedAt: ago(120),
+      ...(entryCompany === null ? {} : { companyId: entryCompany ?? companyId }),
+    });
+    objects.push({ name, timeCreated: ago(120) });
+    docs.push({
+      id: sha32(uriIn(bucket, name)),
+      uri: uriIn(bucket, name),
+      indexTime,
+      ...(tag ? { companyId: tag } : {}),
+    });
+  });
+  return { bucket, entries, objects, docs };
+}
+
+test('untagged_index: a missing or wrong companyId tag plans a retag; a correct tag plans nothing', () => {
+  const fixture = taggedFixture(stagingEnv.DOCS_BUCKET, [
+    { n: 1, companyId: 'luna-digital', tag: 'luna-digital' },
+    { n: 2, companyId: 'luna-digital', tag: null },
+    { n: 3, companyId: 'seri-bayu-digital', tag: 'luna-digital' },
+    { n: 4, companyId: 'seri-bayu-digital', tag: 'seri-bayu-digital' },
+    // an entry without a company reads as the default company
+    { n: 5, companyId: 'luna-digital', tag: 'luna-digital', entryCompany: null },
+    { n: 6, companyId: 'luna-digital', tag: null, entryCompany: null },
+    // no indexTime yet: pending, not untagged
+    { n: 7, companyId: 'luna-digital', tag: null, indexTime: null },
+  ]);
+  const result = plan(fixture);
+  const untagged = result.items.filter((item) => item.kind === 'untagged_index');
+  assert.deepEqual(
+    untagged.map((item) => [item.action, item.firestoreId, item.companyId]),
+    [
+      ['retag', uuid(42), 'luna-digital'],
+      ['retag', uuid(43), 'seri-bayu-digital'],
+      ['retag', uuid(46), 'luna-digital'],
+    ],
+  );
+  assert.equal(untagged[0].vertexId, fixture.docs[1].id);
+  assert.equal(result.counts.untaggedIndex, 3);
+  assert.equal(result.counts.pending, 1);
+  // A retag is not a delete.
+  assert.equal(result.plannedDeletes, 0);
+  assert.equal(result.stop, null);
+  assert.equal(plan(fixture, { maxDeletes: 0 }).stop, null);
+});
+
+test('untagged_index: a duplicate is still a duplicate; only the kept document is tag-checked', () => {
+  const bucket = stagingEnv.DOCS_BUCKET;
+  const id = uuid(60);
+  const uri = uriIn(bucket, `${id}/A.pdf`);
+  const fixture = {
+    bucket,
+    entries: [{ id, fileName: 'A.pdf', title: 'A', category: 'p', connectedAt: ago(300) }],
+    objects: [{ name: `${id}/A.pdf`, timeCreated: ago(300) }],
+    docs: [
+      { id: sha32(uri), uri, indexTime: ago(200), companyId: 'luna-digital' },
+      { id: 'zz-extra', uri, indexTime: ago(200) },
+    ],
+  };
+  const result = plan(fixture);
+  assert.deepEqual(
+    result.items.map((item) => [item.kind, item.vertexId]),
+    [['vertex_duplicate', 'zz-extra']],
+  );
+  assert.equal(result.plannedDeletes, 1);
+});
+
+test('apply retags in place with an inline import and tags missing_index imports; the exact bodies', async () => {
+  const bucket = stagingEnv.DOCS_BUCKET;
+  const fixture = taggedFixture(bucket, [
+    { n: 1, companyId: 'luna-digital', tag: null },
+    { n: 2, companyId: 'seri-bayu-digital', tag: 'luna-digital' },
+    { n: 3, companyId: 'seri-bayu-digital', tag: 'seri-bayu-digital' },
+    { n: 4, companyId: 'seri-bayu-digital', tag: null },
+  ]);
+  // entry 4 has no Vertex document at all (missing_index)
+  const missingUri = fixture.docs[3].uri;
+  fixture.docs.pop();
+  const cloud = fakeCloud({ ...fixture, pageSize: 50 });
+  const result = await reconcile(cloud, { argv: ['--apply'] });
+  assert.equal(result.exitCode, 0, JSON.stringify(result.summary));
+  assert.deepEqual(
+    [
+      result.summary.untaggedIndex,
+      result.summary.retagged,
+      result.summary.missingIndex,
+      result.summary.reimported,
+      result.summary.unrepaired,
+    ],
+    [2, 2, 1, 1, 0],
+  );
+  const bodies = cloud.calls.filter((call) => call.url.endsWith(':import')).map((c) => c.body);
+  const doc = (id, uri, companyId) => ({
+    id,
+    structData: { companyId },
+    content: {
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      uri,
+    },
+  });
+  assert.deepEqual(bodies, [
+    {
+      inlineSource: {
+        documents: [
+          doc(fixture.docs[0].id, fixture.docs[0].uri, 'luna-digital'),
+          doc(fixture.docs[1].id, fixture.docs[1].uri, 'seri-bayu-digital'),
+          doc(uuid(44), missingUri, 'seri-bayu-digital'),
+        ],
+      },
+      reconciliationMode: 'INCREMENTAL',
+    },
+  ]);
+  // No import ever uses an untagged gcsSource, and a second run plans nothing.
+  assert.ok(bodies.every((body) => !('gcsSource' in body)));
+  const again = await reconcile(cloud, { argv: ['--apply'] });
+  assert.deepEqual([again.exitCode, again.items.length], [0, 0]);
+});
+
+test('report mode lists the retag as planned and refuses to write', async () => {
+  const fixture = taggedFixture(stagingEnv.DOCS_BUCKET, [
+    { n: 1, companyId: 'luna-digital', tag: null },
+  ]);
+  const cloud = fakeCloud({ ...fixture });
+  const result = await reconcile(cloud);
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(
+    result.items.map((item) => [item.kind, item.action, item.result]),
+    [['untagged_index', 'retag', 'planned']],
+  );
+  assert.equal(result.summary.untaggedIndex, 1);
+  assert.equal(result.summary.unrepaired, 1);
+  assert.deepEqual(
+    cloud.calls.filter((call) => call.method !== 'GET' && !call.url.endsWith(':runQuery')),
+    [],
+  );
+  const refused = readOnlyFetch(async () => assert.fail('must not send'));
+  await assert.rejects(
+    refused('https://discoveryengine.googleapis.com/v1/x/documents:import', { method: 'POST' }),
+    ReadOnlyViolation,
+  );
 });

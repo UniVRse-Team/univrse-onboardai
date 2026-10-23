@@ -24,15 +24,16 @@ import {
   companyDocumentUri,
   dataStoreDocumentUrl,
   discoveryEngineOperationUrl,
-  explicitImportBody,
   gcsListUrl,
   gcsObjectName,
   gcsObjectUrl,
   importUrl,
   listDataStoreDocuments,
   namespaceIdOf,
+  taggedImportBody,
   vertexDocumentId,
 } from '../server/discovery-engine-documents.mjs';
+import { DEFAULT_COMPANY_ID } from '../server/companies.mjs';
 import { VERTEX_SCOPE } from '../server/vertex-ai.mjs';
 
 export const DEFAULT_OPTIONS = Object.freeze({
@@ -59,7 +60,8 @@ Without --apply nothing is changed (report mode, read only).
 
 Options:
   --apply                Delete Vertex orphans and duplicates and HR-namespace GCS orphans,
-                         and re-import missing documents (default: report only)
+                         re-import missing documents and re-tag indexed documents whose
+                         companyId tag is missing or wrong (default: report only)
   --max-deletes <n>      Stop (exit 3, nothing changed) above n planned deletes (default 10)
   --allow-empty-library  Allow deletes when Firestore holds no entry at all (default: exit 3)
   --grace-minutes <n>    Entries, objects and documents younger than this are pending (15)
@@ -344,6 +346,7 @@ export const ITEM_KINDS = Object.freeze([
   'vertex_duplicate',
   'gcs_orphan',
   'missing_index',
+  'untagged_index',
   'missing_object',
   'retired_entry',
   'pending',
@@ -354,12 +357,14 @@ const actionOf = {
   vertex_duplicate: 'delete_vertex',
   gcs_orphan: 'delete_gcs',
   missing_index: 'reimport',
+  untagged_index: 'retag',
 };
 const countKey = {
   vertex_orphan: 'vertexOrphans',
   vertex_duplicate: 'vertexDuplicates',
   gcs_orphan: 'gcsOrphans',
   missing_index: 'missingIndex',
+  untagged_index: 'untaggedIndex',
   missing_object: 'missingObject',
   retired_entry: 'retiredEntries',
   pending: 'pending',
@@ -369,10 +374,10 @@ const notDrift = new Set(['unmanaged', 'pending']);
 
 // The pure plan from the three reads.
 //   firestore: [companyDocumentSummary]   gcs: [{ name, timeCreated }]
-//   vertex: [{ id, uri, indexTime }]      now: ms since epoch
+//   vertex: [{ id, uri, indexTime, companyId }]      now: ms since epoch
 //   options: { bucket, graceMinutes, maxDeletes, allowEmptyLibrary, skipGcs }
 // Returns { items, counts, plannedDeletes, stop: null | 'empty_library' | 'max_deletes' }.
-// Each item: { kind, action, firestoreId, vertexId, name, uri }; name and uri
+// Each item: { kind, action, firestoreId, vertexId, name, uri, companyId }; name and uri
 // never reach a log line without --show-names (and uri never does).
 export function planReconciliation({ firestore = [], gcs = [], vertex = [], options, now }) {
   const { bucket } = options;
@@ -407,9 +412,27 @@ export function planReconciliation({ firestore = [], gcs = [], vertex = [], opti
     vertexByUri.get(key).push(document);
   }
 
+  // The tag a document must carry: its entry's company. An entry without a
+  // company reads as 'univrse' in companyDocumentSummary (the legacy alias of
+  // the default company); the app's upload tags those with the default company
+  // and the company-filtered search matches that id, so do the same here.
+  const companyOf = (entry) =>
+    !entry.companyId || entry.companyId === 'univrse' ? DEFAULT_COMPANY_ID : entry.companyId;
+
   const items = [];
-  const add = (kind, { firestoreId = null, vertexId = null, name = null, uri = null } = {}) =>
-    items.push({ kind, action: actionOf[kind] ?? 'none', firestoreId, vertexId, name, uri });
+  const add = (
+    kind,
+    { firestoreId = null, vertexId = null, name = null, uri = null, companyId = null } = {},
+  ) =>
+    items.push({
+      kind,
+      action: actionOf[kind] ?? 'none',
+      firestoreId,
+      vertexId,
+      name,
+      uri,
+      companyId,
+    });
 
   // (1) Vertex documents.
   for (const [key, documents] of vertexByUri) {
@@ -423,9 +446,16 @@ export function planReconciliation({ firestore = [], gcs = [], vertex = [], opti
         documents.find((document) => document.id === canonical) ??
         [...documents].sort((a, b) => (a.id < b.id ? -1 : 1))[0];
       for (const document of documents) {
-        const ref = { firestoreId: entry.id, vertexId: document.id, name, uri };
+        const ref = {
+          firestoreId: entry.id,
+          vertexId: document.id,
+          name,
+          uri,
+          companyId: companyOf(entry),
+        };
         if (document === keep) {
           if (!document.indexTime) add('pending', ref);
+          else if ((document.companyId ?? null) !== companyOf(entry)) add('untagged_index', ref);
         } else if (!document.indexTime || young(document.indexTime)) add('pending', ref);
         else add('vertex_duplicate', ref);
       }
@@ -474,7 +504,7 @@ export function planReconciliation({ firestore = [], gcs = [], vertex = [], opti
     if (!entry.fileName) continue;
     const objectName = gcsObjectName(entry.id, entry.fileName, entry.companyId);
     const uri = `${bucketPrefix}${objectName}`;
-    Object.assign(ref, { name: objectName, uri });
+    Object.assign(ref, { name: objectName, uri, companyId: companyOf(entry) });
     if (!live.has(objectName)) add(entryYoung(entry) ? 'pending' : 'missing_object', ref);
     else if (!vertexByUri.has(uri)) add(entryYoung(entry) ? 'pending' : 'missing_index', ref);
   }
@@ -499,7 +529,8 @@ function operationOutcome(operation) {
 }
 
 // Runs the actionable items of a plan (apply mode, no safety stop), in order:
-// Vertex deletes, GCS deletes, then re-imports in batches of up to 100 URIs.
+// Vertex deletes, GCS deletes, then tagged re-imports (missing_index and
+// untagged_index) in batches of up to 100 documents.
 // Sets item.result ('done' | 'failed' | 'skipped') and item.status (the HTTP
 // status of a failed action). A <uuid>/ orphan is re-checked in Firestore
 // first and skipped if that entry now expects it.
@@ -551,7 +582,7 @@ export async function executePlan({
     await remove(item, gcsObjectUrl(config.bucket, item.name));
   }
 
-  const reimports = items.filter((i) => i.action === 'reimport');
+  const reimports = items.filter((i) => i.action === 'reimport' || i.action === 'retag');
   for (let start = 0; start < reimports.length; start += IMPORT_BATCH) {
     const batch = reimports.slice(start, start + IMPORT_BATCH);
     if (outOfTime()) {
@@ -562,7 +593,15 @@ export async function executePlan({
       const response = await http(
         'POST',
         importUrl(config),
-        explicitImportBody(batch.map((item) => item.uri)),
+        taggedImportBody(
+          batch.map((item) => ({
+            // A retag keeps the existing Vertex document id; a new import uses
+            // the Firestore entry id, like the app's upload.
+            id: item.action === 'retag' ? item.vertexId : item.firestoreId,
+            uri: item.uri,
+            companyId: item.companyId,
+          })),
+        ),
       );
       if (!response.ok) {
         batch.forEach((item) => failed(item, response.status));
@@ -626,12 +665,14 @@ export const SUMMARY_COUNTS = Object.freeze([
   'vertexDuplicates',
   'gcsOrphans',
   'missingIndex',
+  'untaggedIndex',
   'missingObject',
   'retiredEntries',
   'pending',
   'deletedVertex',
   'deletedGcs',
   'reimported',
+  'retagged',
   'failed',
   'unrepaired',
 ]);
@@ -759,6 +800,7 @@ export async function run({
   counts.deletedVertex = result('delete_vertex', 'done').length;
   counts.deletedGcs = result('delete_gcs', 'done').length;
   counts.reimported = result('reimport', 'done').length;
+  counts.retagged = result('retag', 'done').length;
   counts.failed = plan.items.filter((item) => item.result === 'failed').length;
   counts.unrepaired = plan.items.filter(
     (item) => !notDrift.has(item.kind) && item.result !== 'done',
