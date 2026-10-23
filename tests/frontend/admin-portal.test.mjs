@@ -268,27 +268,3 @@ test('company rename validation and error messages handle empty, long and taken 
     'That company no longer exists.',
   );
 });
-
-import { filterAccountByPath } from '../../src/access/use-account-session.js';
-
-test('filterAccountByPath prevents cross-contamination between admin and non-admin tabs', () => {
-  const adminAccount = { id: 'adm-1', username: 'admin', role: 'admin' };
-  const hrAccount = { id: 'hr-1', username: 'HR-0001', role: 'hr' };
-  const empAccount = { id: 'emp-1', username: 'EMP-0001', role: 'employee' };
-
-  // Admin paths only accept admin accounts
-  assert.deepEqual(filterAccountByPath(adminAccount, '/admin'), adminAccount);
-  assert.deepEqual(filterAccountByPath(adminAccount, '/admin/companies/acme'), adminAccount);
-  assert.equal(filterAccountByPath(hrAccount, '/admin'), null);
-  assert.equal(filterAccountByPath(empAccount, '/admin/companies/acme'), null);
-
-  // Non-admin paths only accept non-admin accounts
-  assert.deepEqual(filterAccountByPath(hrAccount, '/hr'), hrAccount);
-  assert.deepEqual(filterAccountByPath(empAccount, '/onboarding'), empAccount);
-  assert.equal(filterAccountByPath(adminAccount, '/hr'), null);
-  assert.equal(filterAccountByPath(adminAccount, '/onboarding'), null);
-  assert.equal(filterAccountByPath(adminAccount, '/login'), null);
-
-  // Null account returns null
-  assert.equal(filterAccountByPath(null, '/admin'), null);
-});

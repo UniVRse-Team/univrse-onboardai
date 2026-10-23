@@ -7,17 +7,6 @@ import {
 } from './account-api.mjs';
 import { afterAccountAction, sessionCheckOutcome } from './account-routing.mjs';
 
-export function filterAccountByPath(
-  account,
-  pathname = typeof window !== 'undefined' ? window.location.pathname : '',
-) {
-  if (!account) return null;
-  const isAdminPath = pathname.startsWith('/admin');
-  if (isAdminPath && account.role !== 'admin') return null;
-  if (!isAdminPath && account.role === 'admin') return null;
-  return account;
-}
-
 // Account state for the whole site. `accounts` is null until /api/config answers.
 // With accounts off (or unreachable) nothing else is ever requested.
 export default function useAccountSession({ onNavigate }) {
@@ -49,8 +38,7 @@ export default function useAccountSession({ onNavigate }) {
         return;
       }
       try {
-        const res = await accountApi.session({ report: false });
-        const account = filterAccountByPath(res.account);
+        const { account } = await accountApi.session({ report: false });
         if (live) setState({ accounts: true, loading: false, account, notice: '' });
       } catch (error) {
         if (live)
@@ -80,9 +68,6 @@ export default function useAccountSession({ onNavigate }) {
           let result;
           try {
             result = await accountApi.session({ report: false });
-            if (result?.account) {
-              result = { ...result, account: filterAccountByPath(result.account) };
-            }
           } catch (error) {
             result = error.name === 'AbortError' || !error.status ? { network: true } : { error };
           }
@@ -123,7 +108,7 @@ export default function useAccountSession({ onNavigate }) {
     async (username, password) => {
       setState((s) => ({ ...s, notice: '' }));
       const { account } = await accountApi.signIn(username, password);
-      setState((s) => ({ ...s, account: filterAccountByPath(account), notice: '' }));
+      setState((s) => ({ ...s, account, notice: '' }));
       refreshConfig();
       return account;
     },

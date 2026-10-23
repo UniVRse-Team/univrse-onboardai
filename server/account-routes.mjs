@@ -22,7 +22,6 @@ import { mountOnboardingRoutes } from './onboarding-routes.mjs';
 // 503 ACCOUNTS_NOT_CONFIGURED without DATABASE_URL, is never cached, and sits
 // behind the app's POST rate limiter.
 export const accountCookie = 'onboardai_account';
-export const adminCookie = 'onboardai_admin';
 
 export function readCookie(req, name) {
   const prefix = name + '=';
@@ -77,15 +76,12 @@ export function mountAccountRoutes(
     submissions = null,
   },
 ) {
-  const setSession = (req, res, result) => {
-    const cookieName = result.account.role === 'admin' ? adminCookie : accountCookie;
-    res.cookie(cookieName, result.token, {
+  const setSession = (req, res, result) =>
+    res.cookie(accountCookie, result.token, {
       ...accountCookieOptions(req, env),
       maxAge: result.sessionMs,
     });
-  };
-  const clearSession = (req, res, cookieName = accountCookie) =>
-    res.clearCookie(cookieName, accountCookieOptions(req, env));
+  const clearSession = (req, res) => res.clearCookie(accountCookie, accountCookieOptions(req, env));
 
   function guard(req, res, next) {
     res.set('Cache-Control', 'no-store');
@@ -102,7 +98,7 @@ export function mountAccountRoutes(
       if (token === undefined) throw accountErrors.authRequired();
       const session = await accounts.session(token);
       if (!session) {
-        clearSession(req, res, accountCookie);
+        clearSession(req, res);
         throw accountErrors.sessionExpired();
       }
       if (session.account.mustChangePassword && !allowPasswordChange)
@@ -119,75 +115,24 @@ export function mountAccountRoutes(
 
   const auth = express.Router();
   auth.post('/sign-in', async (req, res) => {
-    const adminToken = readCookie(req, adminCookie);
-    const accountToken = readCookie(req, accountCookie);
-    const previous = adminToken || accountToken;
+    const previous = readCookie(req, accountCookie);
     const result = await accounts.signIn(req.body, previous);
     setSession(req, res, result);
     res.json({ account: result.account });
   });
   auth.get('/session', async (req, res) => {
-    const scope = req.query.scope || req.headers['x-session-scope'];
-    let token;
-    let cookieName = accountCookie;
-    if (scope === 'admin') {
-      token = readCookie(req, adminCookie) || readCookie(req, accountCookie);
-      cookieName = readCookie(req, adminCookie) ? adminCookie : accountCookie;
-    } else if (scope === 'account') {
-      token = readCookie(req, accountCookie);
-      cookieName = accountCookie;
-    } else {
-      const isRefererAdmin =
-        req.headers.referer &&
-        (() => {
-          try {
-            return new URL(req.headers.referer).pathname.startsWith('/admin');
-          } catch {
-            return false;
-          }
-        })();
-      if (isRefererAdmin) {
-        token = readCookie(req, adminCookie) || readCookie(req, accountCookie);
-        cookieName = readCookie(req, adminCookie) ? adminCookie : accountCookie;
-      } else {
-        token = readCookie(req, accountCookie);
-        cookieName = accountCookie;
-        if (!token && readCookie(req, adminCookie)) {
-          token = readCookie(req, adminCookie);
-          cookieName = adminCookie;
-        }
-      }
-    }
+    const token = readCookie(req, accountCookie);
     if (token === undefined) return res.json({ account: null });
     const session = await accounts.session(token);
     if (!session) {
-      clearSession(req, res, cookieName);
+      clearSession(req, res);
       throw accountErrors.sessionExpired();
     }
     res.json({ account: session.account });
   });
   auth.post('/sign-out', async (req, res) => {
-    const scope = req.query.scope || req.headers['x-session-scope'];
-    const isAdmin =
-      scope === 'admin' ||
-      (req.headers.referer &&
-        (() => {
-          try {
-            return new URL(req.headers.referer).pathname.startsWith('/admin');
-          } catch {
-            return false;
-          }
-        })());
-    const token = isAdmin
-      ? readCookie(req, adminCookie) || readCookie(req, accountCookie)
-      : readCookie(req, accountCookie);
-    if (token) await accounts.signOut(token);
-    if (isAdmin) {
-      clearSession(req, res, adminCookie);
-      if (!readCookie(req, adminCookie)) clearSession(req, res, accountCookie);
-    } else {
-      clearSession(req, res, accountCookie);
-    }
+    await accounts.signOut(readCookie(req, accountCookie));
+    clearSession(req, res);
     res.status(204).end();
   });
   auth.post('/password', signedIn({ allowPasswordChange: true }), async (req, res) => {

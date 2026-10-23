@@ -22,12 +22,6 @@ export default function AdminDashboard({ navigate }) {
   const [showAdvancedId, setShowAdvancedId] = useState(false);
   const [copiedCompanyId, setCopiedCompanyId] = useState(null);
 
-  const openCompanyInNewTab = (companyId, e) => {
-    if (e && typeof e.preventDefault === 'function') e.preventDefault();
-    const url = `/admin/companies/${companyId}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
   const loadCompanies = useCallback(async () => {
     setLoading(true);
     try {
@@ -179,9 +173,10 @@ export default function AdminDashboard({ navigate }) {
                   <td className="admin-company-name-cell">
                     <a
                       href={`/admin/companies/${company.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => openCompanyInNewTab(company.id, e)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        navigate(`/admin/companies/${company.id}`);
+                      }}
                     >
                       {company.name}
                     </a>
@@ -193,31 +188,14 @@ export default function AdminDashboard({ navigate }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <a
                         href={`/companies/${company.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => openCompanyInNewTab(company.id, e, '/companies/')}
-                        title={`Open ${company.name} in new tab`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate(`/companies/${company.id}`);
+                        }}
                         style={{ fontSize: 13, color: '#256a91', textDecoration: 'underline' }}
                       >
                         /companies/{company.id}
                       </a>
-                      <button
-                        type="button"
-                        title="Open company in new tab"
-                        aria-label={`Open ${company.name} in new tab`}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          padding: 2,
-                          color: '#526986',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                        }}
-                        onClick={(e) => openCompanyInNewTab(company.id, e, '/companies/')}
-                      >
-                        <Icon name="arrow" size={14} />
-                      </button>
                       <button
                         type="button"
                         title="Copy company link"
