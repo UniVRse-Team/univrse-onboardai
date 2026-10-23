@@ -212,6 +212,8 @@ HR and employee sign-in, on when `DATABASE_URL` is set. PostgreSQL holds account
 | `server/ai-proficiency.mjs`             | AI proficiency self-assessment (levels 1–10, learning paths) for the `role-tools.ai-readiness-training` step, and its chat rating    |
 | `server/check-grader.mjs`               | Grades written policy checks with Gemini; the server decides the pass from verified evidence                                         |
 | `server/onboarding-journey.mjs`         | Firestore templates, progress, chips and first-day details for employees and HR                                                      |
+| `server/employee-company-documents.mjs` | `GET /api/me/company-documents` and `/:id/file`: an employee's own company's active documents (#126)                                 |
+| `server/company-document-files.mjs`     | Reads an uploaded company document's object from `DOCS_BUCKET`; the in-memory stand-in for the preview and tests                     |
 | `server/onboarding-routes.mjs`          | The onboarding journey HTTP routes under `/api/me` and `/api/hr`                                                                     |
 | `server/onboarding-collections.mjs`     | The onboarding journey's Firestore collection names                                                                                  |
 | `server/support-requests.mjs`           | Consented support requests (preview, create, HR workflow) and team insights                                                          |

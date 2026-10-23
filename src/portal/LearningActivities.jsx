@@ -1,14 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { accountRequest } from '../access/account-api.mjs';
 import { journeyApi } from '../access/journey-api.mjs';
+import { policyButtonTarget } from './company-documents-model.mjs';
 import { accessState, policyDocumentLabel, verificationGuide } from './learning-area-model.mjs';
 
 // Optional. Saved only to the employee's own record when they choose Save; HR
 // and managers cannot read it, and it never affects progress.
 // The link to a policy's full document. The Employee Handbook always has its button;
 // until an approved document is linked it says so instead of opening something made up.
-export function PolicyDocumentButton({ stepId, document }) {
+export function PolicyDocumentButton({ stepId, document, companyDocuments }) {
   const [note, setNote] = useState(false);
+  const target = policyButtonTarget({ stepId, document, documents: companyDocuments });
+  if (target?.kind === 'uploaded')
+    return (
+      <a className="fp-action" href={target.url} target="_blank" rel="noopener noreferrer">
+        {target.label}
+      </a>
+    );
   if (document)
     return (
       <a className="fp-action" href={document.url} target="_blank" rel="noopener noreferrer">

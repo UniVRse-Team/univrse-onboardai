@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import Icon from './Icon';
 import LearningArea from './LearningArea';
+import CompanyDocuments, { useCompanyDocuments } from './CompanyDocuments';
+import { documentsForArea, otherDocuments } from './company-documents-model.mjs';
 import {
   learningAreas,
   focusLearningStep,
@@ -125,6 +127,7 @@ function focusTarget(step, stepId, action) {
 // The signed-in employee's onboarding footprint (GET /api/me/onboarding).
 export default function EmployeeFootprint({ navigate, chatPath, account, expanded = false }) {
   const documents = useDashboardDocuments();
+  const companyDocuments = useCompanyDocuments();
   const [onboarding, setOnboarding] = useState(null);
   const [error, setError] = useState('');
   const [firstDay, setFirstDay] = useState(null);
@@ -295,6 +298,7 @@ export default function EmployeeFootprint({ navigate, chatPath, account, expande
               firstDay={firstDay}
               expanded={expanded}
               navigate={navigate}
+              companyDocuments={companyDocuments}
             />
           ) : (
             <details className="fp-area" key={area.id} open={expanded || index === 0 || undefined}>
@@ -350,6 +354,11 @@ export default function EmployeeFootprint({ navigate, chatPath, account, expande
                     </p>
                   ) : null;
                 })()}
+              {area.id === 'documentation' && (
+                <CompanyDocuments
+                  documents={documentsForArea(companyDocuments.documents, area.id)}
+                />
+              )}
               <ul className="fp-steps">
                 {area.steps.map((step) => (
                   <li
@@ -421,6 +430,14 @@ export default function EmployeeFootprint({ navigate, chatPath, account, expande
           ),
         )}
       </div>
+      {otherDocuments(companyDocuments.documents).length > 0 && (
+        <div className="fp-other-documents">
+          <CompanyDocuments
+            title="Other company documents"
+            documents={otherDocuments(companyDocuments.documents)}
+          />
+        </div>
+      )}
 
       <div className="fp-cards">
         {rows && (

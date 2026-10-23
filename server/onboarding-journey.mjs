@@ -7,6 +7,9 @@ import { journeyCollections, quickQuestionsDoc } from './onboarding-collections.
 import {
   builtInQuickQuestions,
   builtInTemplate,
+  starterQuickQuestions,
+  starterTemplate,
+  starterTemplateVersion,
   stepQuestions,
   templateVersion,
   trackOf,
@@ -23,7 +26,12 @@ import {
   presentAiProficiency,
   validateAiAssessmentInput,
 } from './ai-proficiency.mjs';
-import { DEFAULT_COMPANY_ID } from './companies.mjs';
+import {
+  DEFAULT_COMPANY_ID,
+  companyOrDefault as companyOf,
+  contentPackOf,
+  templateDocId,
+} from './companies.mjs';
 import {
   StepRuleError,
   briefedAt,
@@ -49,10 +57,20 @@ import {
 // details (issue #50) for signed-in employee accounts. Firestore layout
 // (docs/onboarding-journey.md):
 //
-//   onboardingTemplates/{track}    the template per track (built-in fallback)
+//   onboardingTemplates/{track}    Luna Digital's template per track (built-in fallback)
+//   onboardingTemplates/starter.{track}  every other company's (starter fallback)
 //   onboardingProgress/{accountId} { accountId, updatedAt, steps: { [stepId]: entry } }
-//   config/quickQuestions          { employee: [Chip], intern: [...], contractor: [...] }
+//   config/quickQuestions          { employee: [Chip], intern: [...], contractor: [...],
+//                                    optional "starter.employee": [...], ... }
 //   employeeFirstDay/{accountId}   the details HR enters for day 1
+//
+// The template and the chips follow the EMPLOYEE's company (issue #126):
+// templateDocId(companyId, track) names the document, contentPackOf picks the
+// version it must reach and the fallback. Employee routes use the signed-in
+// account's companyId; HR routes use the company of the employee being viewed
+// (accounts.getEmployee(actor, id) only finds employees of the actor's own
+// company, so that company is the employee's). A missing companyId is
+// DEFAULT_COMPANY_ID, as everywhere else.
 //
 // Only the employee's own completions, HR verifications and (F5) Alya's
 // confirmed actions change progress. Answer style, feedback, support requests
@@ -80,6 +98,26 @@ const isPlainObject = (value) =>
   typeof value === 'object' &&
   !Array.isArray(value) &&
   [Object.prototype, null].includes(Object.getPrototypeOf(value));
+
+// The content of each content pack (companies.mjs contentPackOf): the stored
+// template's minimum version, the built-in fallbacks, and the related questions
+// of a task's chips (Luna Digital's are written against its own documents, so
+// the starter pack offers only each step's own question).
+const contentPacks = Object.freeze({
+  'luna-digital': {
+    version: templateVersion,
+    template: builtInTemplate,
+    chips: builtInQuickQuestions,
+    stepQuestions,
+  },
+  starter: {
+    version: starterTemplateVersion,
+    template: starterTemplate,
+    chips: starterQuickQuestions,
+    stepQuestions: {},
+  },
+});
+export const contentPackFor = (companyId) => contentPacks[contentPackOf(companyOf(companyId))];
 
 const ruleErrors = {
   BRIEFING_REQUIRED: journeyErrors.briefingRequired,
@@ -214,32 +252,41 @@ export function createOnboardingJourney({
     cache.set(key, { at: now().getTime(), value });
     return value;
   }
-  function template(track) {
-    return cached(`template:${track}`, async () => {
+  // The company's template of a track: onboardingTemplates/<templateDocId>,
+  // cached per document id (so the packs never share an entry; every starter
+  // company reads the same starter.<track> document).
+  function template(companyId, track) {
+    const pack = contentPackFor(companyId);
+    const docId = templateDocId(companyOf(companyId), track);
+    return cached(`template:${docId}`, async () => {
       const snapshot = await guarded('read onboarding template', async () =>
-        (await database()).collection(journeyCollections.templates).doc(track).get(),
+        (await database()).collection(journeyCollections.templates).doc(docId).get(),
       );
       const stored = snapshot.exists ? validTemplate(snapshot.data(), track) : null;
       if (snapshot.exists && !stored)
-        log?.('Onboarding template is malformed; the built-in template is used.');
+        log?.(`Onboarding template is malformed (${docId}); the built-in template is used.`);
       // A template older than the built-in one (its migration has not run
       // yet) is replaced by it, so new content never waits for a migration.
-      if (stored && stored.version < templateVersion) {
+      if (stored && stored.version < pack.version) {
         log?.(
-          `Onboarding template ${track} is version ${stored.version}; the built-in version ${templateVersion} is used until the migration updates it.`,
+          `Onboarding template ${docId} is version ${stored.version}; the built-in version ${pack.version} is used until the migration updates it.`,
         );
-        return builtInTemplate(track);
+        return pack.template(track);
       }
-      return stored || builtInTemplate(track);
+      return stored || pack.template(track);
     });
   }
-  function chipConfig(track) {
-    return cached(`chips:${track}`, async () => {
+  // The company's general chips of a track: config/quickQuestions[<templateDocId>]
+  // ("employee" or "starter.employee"), else the pack's built-in chips.
+  function chipConfig(companyId, track) {
+    const key = templateDocId(companyOf(companyId), track);
+    return cached(`chips:${key}`, async () => {
       const snapshot = await guarded('read quick questions', async () =>
         (await database()).collection(journeyCollections.config).doc(quickQuestionsDoc).get(),
       );
       return (
-        (snapshot.exists && validChips(snapshot.data()?.[track])) || builtInQuickQuestions()[track]
+        (snapshot.exists && validChips(snapshot.data()?.[key])) ||
+        contentPackFor(companyId).chips()[track]
       );
     });
   }
@@ -254,13 +301,20 @@ export function createOnboardingJourney({
       return snapshot.exists ? snapshot.data() : null;
     });
 
-  // The employee's profile facts the journey needs.
+  // The employee's profile facts the journey needs. `who` below is one of
+  // these (or employeeTrack's): { companyId, track, ... }.
   async function employeeFacts(account) {
     const profile = await accounts.myProfile(account);
-    return { track: trackOf(profile), startDate: profile?.job.startDate || null, profile };
+    return {
+      companyId: companyOf(account?.companyId),
+      track: trackOf(profile),
+      startDate: profile?.job.startDate || null,
+      profile,
+    };
   }
-  async function onboardingOf(accountId, track) {
-    const [chosen, progress] = await Promise.all([template(track), readProgress(accountId)]);
+  const templateOf = (who) => template(who.companyId, who.track);
+  async function onboardingOf(accountId, who) {
+    const [chosen, progress] = await Promise.all([templateOf(who), readProgress(accountId)]);
     return { template: chosen, progress, onboarding: buildOnboarding(chosen, progress) };
   }
 
@@ -282,7 +336,7 @@ export function createOnboardingJourney({
   // Brings the saved step statuses in line with the saved submissions. Idempotent;
   // run on every read and after every submission or review, so a failed earlier
   // write heals itself. A read failure never blocks the dashboard.
-  async function reconcileDocuments(accountId, track) {
+  async function reconcileDocuments(accountId, who) {
     if (!documentStatuses) return;
     let latest;
     try {
@@ -291,23 +345,23 @@ export function createOnboardingJourney({
       log?.('Document statuses could not be read: ' + (error?.message || error));
       return;
     }
-    const { template: chosen, progress } = await onboardingOf(accountId, track);
+    const { template: chosen, progress } = await onboardingOf(accountId, who);
     for (const stepId of documentStepIds(chosen)) {
       const entry = progressEntry(progress, stepId);
       const want = documentWanted(latest[stepId], entry);
       if ((entry?.status || null) === want) continue;
-      await changeStep(accountId, track, stepId, () => (want ? { status: want } : null), {
+      await changeStep(accountId, who, stepId, () => (want ? { status: want } : null), {
         source: 'employee',
         actorId: accountId,
       });
     }
   }
-  async function syncDocuments(accountId) {
-    const { track } = await employeeTrack(accountId);
-    await reconcileDocuments(accountId, track);
+  // companyId: the employee's company (the submission's), DEFAULT_COMPANY_ID when absent.
+  async function syncDocuments(accountId, companyId = null) {
+    await reconcileDocuments(accountId, await employeeTrack(accountId, null, companyId));
   }
-  const documentStepGuard = async (track, stepId) => {
-    const found = findStep(await template(track), stepId);
+  const documentStepGuard = async (who, stepId) => {
+    const found = findStep(await templateOf(who), stepId);
     return found && needsDocument(found.area.id, found.step);
   };
 
@@ -315,8 +369,8 @@ export function createOnboardingJourney({
   // new entry (null = todo) or throws a StepRuleError; `record` is the step's
   // whole stored record. Unchanged steps are not written. The briefing fields
   // stay, whatever the status becomes.
-  async function changeStep(accountId, track, stepId, change, { source, actorId }) {
-    const chosen = await template(track);
+  async function changeStep(accountId, who, stepId, change, { source, actorId }) {
+    const chosen = await templateOf(who);
     const found = findStep(chosen, stepId);
     if (!found) throw journeyErrors.stepNotFound();
     const progress = await guarded('save onboarding progress', async () => {
@@ -368,9 +422,9 @@ export function createOnboardingJourney({
 
   // --- Employee ---------------------------------------------------------------
   async function myOnboarding(account) {
-    const { track } = await employeeFacts(account);
-    await reconcileDocuments(account.id, track);
-    return (await onboardingOf(account.id, track)).onboarding;
+    const who = await employeeFacts(account);
+    await reconcileDocuments(account.id, who);
+    return (await onboardingOf(account.id, who)).onboarding;
   }
   const documentRequired = () =>
     new ChatError(
@@ -379,17 +433,17 @@ export function createOnboardingJourney({
       'Upload your document to complete this task. It cannot be marked complete without saving it.',
     );
   async function completeStep(account, stepId) {
-    const { track } = await employeeFacts(account);
-    if (await documentStepGuard(track, stepId)) throw documentRequired();
-    return changeStep(account.id, track, stepId, employeeComplete, {
+    const who = await employeeFacts(account);
+    if (await documentStepGuard(who, stepId)) throw documentRequired();
+    return changeStep(account.id, who, stepId, employeeComplete, {
       source: 'employee',
       actorId: account.id,
     });
   }
   async function reopenStep(account, stepId) {
-    const { track } = await employeeFacts(account);
-    if (await documentStepGuard(track, stepId)) throw documentRequired();
-    return changeStep(account.id, track, stepId, employeeReopen, {
+    const who = await employeeFacts(account);
+    if (await documentStepGuard(who, stepId)) throw documentRequired();
+    return changeStep(account.id, who, stepId, employeeReopen, {
       source: 'employee',
       actorId: account.id,
     });
@@ -409,8 +463,7 @@ export function createOnboardingJourney({
   async function saveAiProficiency(account, body, query = {}) {
     assertAiProficiencyAccess(account, query);
     const validated = validateAiAssessmentInput(body, account);
-    const { track } = await employeeFacts(account);
-    const chosen = await template(track);
+    const chosen = await templateOf(await employeeFacts(account));
     const progress = await guarded('save ai proficiency', async () => {
       const db = await database(),
         ref = progressRef(db, account.id);
@@ -474,8 +527,7 @@ export function createOnboardingJourney({
     } else if (body !== undefined && body !== null) {
       throw journeyErrors.aiProficiencyInvalid();
     }
-    const { track } = await employeeFacts(account);
-    const chosen = await template(track);
+    const chosen = await templateOf(await employeeFacts(account));
     const progress = await guarded('complete ai training', async () => {
       const db = await database(),
         ref = progressRef(db, account.id);
@@ -521,15 +573,15 @@ export function createOnboardingJourney({
   // briefing needs it before its check is shown or answered, unless the
   // check is already passed.
   async function checkFor(account, stepId) {
-    const { track } = await employeeFacts(account);
-    const { template: chosen, progress } = await onboardingOf(account.id, track);
+    const who = await employeeFacts(account);
+    const { template: chosen, progress } = await onboardingOf(account.id, who);
     const found = findStep(chosen, stepId);
     if (!found) throw journeyErrors.stepNotFound();
     if (!found.step.check) throw journeyErrors.checkNotFound();
     const passed = progressEntry(progress, stepId)?.status === 'done';
     if (!passed && needsBriefing(found.step, stepRecord(progress, stepId)))
       throw journeyErrors.briefingRequired();
-    return { track, check: found.step.check };
+    return { who, check: found.step.check };
   }
   // A new order of the options on every call (Fisher-Yates).
   function shuffled(options) {
@@ -560,10 +612,10 @@ export function createOnboardingJourney({
       sourceTitle: check.sourceTitle,
     };
   }
-  const markPassed = (account, track, stepId) =>
+  const markPassed = (account, who, stepId) =>
     changeStep(
       account.id,
-      track,
+      who,
       stepId,
       (step, entry) => (entry?.status === 'done' ? entry : { status: 'done' }),
       { source: 'employee', actorId: account.id },
@@ -573,7 +625,7 @@ export function createOnboardingJourney({
   // Written: { answer } -> { correct, feedback, explanation|null, onboarding };
   // the answer is graded and dropped, never stored or logged.
   async function answerCheck(account, stepId, body) {
-    const { track, check } = await checkFor(account, stepId);
+    const { who, check } = await checkFor(account, stepId);
     const fields = isPlainObject(body) ? Object.keys(body) : null;
     if (check.type === 'written') {
       const answer = fields && fields.length === 1 ? body.answer : undefined;
@@ -587,8 +639,8 @@ export function createOnboardingJourney({
         throw journeyErrors.checkGraderUnavailable();
       }
       const onboarding = graded.correct
-        ? await markPassed(account, track, stepId)
-        : (await onboardingOf(account.id, track)).onboarding;
+        ? await markPassed(account, who, stepId)
+        : (await onboardingOf(account.id, who)).onboarding;
       return {
         correct: graded.correct,
         feedback: graded.feedback,
@@ -601,8 +653,8 @@ export function createOnboardingJourney({
       throw journeyErrors.checkAnswerInvalid(check);
     const correct = optionId === check.correctOptionId;
     const onboarding = correct
-      ? await markPassed(account, track, stepId)
-      : (await onboardingOf(account.id, track)).onboarding;
+      ? await markPassed(account, who, stepId)
+      : (await onboardingOf(account.id, who)).onboarding;
     return { correct, explanation: check.explanation, onboarding };
   }
   // POST .../briefing { completion: "listened" | "read" }: records the
@@ -615,8 +667,7 @@ export function createOnboardingJourney({
       !briefingCompletions.includes(completion)
     )
       throw journeyErrors.briefingCompletionInvalid();
-    const { track } = await employeeFacts(account);
-    const chosen = await template(track);
+    const chosen = await templateOf(await employeeFacts(account));
     const found = findStep(chosen, stepId);
     if (!found) throw journeyErrors.stepNotFound();
     if (!found.step.briefing || found.step.required === false)
@@ -648,16 +699,17 @@ export function createOnboardingJourney({
   // When an employee marks a step's answer (or its re-explanation) helpful,
   // they already understand that concept, so the step's briefing is recorded.
   async function recordHelpfulAnswer(account, messages, messageId) {
-    const { track } = await employeeFacts(account);
-    const chosen = await template(track);
+    const chosen = await templateOf(await employeeFacts(account));
     const stepId = stepForHelpfulMessage(chosen, messages, messageId);
     if (!stepId) return null;
     return recordBriefing(account, stepId, { completion: 'helpful' });
   }
   // Whether this employee still needs the step's briefing (F5 approvals).
   async function briefingNeeded(account, stepId) {
-    const { track } = await employeeFacts(account);
-    const { template: chosen, progress } = await onboardingOf(account.id, track);
+    const { template: chosen, progress } = await onboardingOf(
+      account.id,
+      await employeeFacts(account),
+    );
     const found = findStep(chosen, stepId);
     if (!found) return false;
     if (progressEntry(progress, stepId)) return false;
@@ -667,19 +719,20 @@ export function createOnboardingJourney({
     if (await briefingNeeded(account, stepId)) throw journeyErrors.briefingRequired();
   }
   async function quickQuestions(account, { stepId = null } = {}) {
-    const { track, startDate } = await employeeFacts(account);
+    const who = await employeeFacts(account);
     // Asked from a task: that task's questions, not the overall next step's.
     if (typeof stepId === 'string' && stepId && stepId.length <= 120) {
       const forTask = taskChips({
-        template: await template(track),
+        template: await templateOf(who),
         stepId,
-        questions: stepQuestions[stepId] || [],
+        questions: contentPackFor(who.companyId).stepQuestions[stepId] || [],
       });
       if (forTask) return { chips: forTask };
     }
+    const { startDate } = who;
     const [{ onboarding }, chips] = await Promise.all([
-      onboardingOf(account.id, track),
-      chipConfig(track),
+      onboardingOf(account.id, who),
+      chipConfig(who.companyId, who.track),
     ]);
     return { chips: selectChips({ onboarding, chips, startDate, today: companyDay(now()) }) };
   }
@@ -687,13 +740,13 @@ export function createOnboardingJourney({
   // a "step:<stepId>" chip for a step of their template, or a configured chip.
   async function resolveChip(account, chipId) {
     if (typeof chipId !== 'string' || !chipId || chipId.length > 120) return null;
-    const { track } = await employeeFacts(account);
+    const who = await employeeFacts(account);
     if (chipId.startsWith('step:')) {
       // "step:<id>" is the task's own question, "step:<id>#2" a related one.
-      const found = findStep(await template(track), chipId.slice(5).split('#')[0]);
+      const found = findStep(await templateOf(who), chipId.slice(5).split('#')[0]);
       return found ? { id: chipId, kind: 'knowledge', stepId: found.step.id } : null;
     }
-    const chip = (await chipConfig(track)).find((c) => c.id === chipId);
+    const chip = (await chipConfig(who.companyId, who.track)).find((c) => c.id === chipId);
     return chip ? { ...chip, stepId: null } : null;
   }
   async function myFirstDay(account) {
@@ -715,14 +768,22 @@ export function createOnboardingJourney({
   }
 
   // --- HR -----------------------------------------------------------------------
-  async function employeeTrack(id, actor = null) {
+  // The employee's company: the one given (a submission's), else the actor's,
+  // because getEmployee(actor, id) only finds an employee of the actor's own
+  // company; DEFAULT_COMPANY_ID when there is neither.
+  const companyOfActor = (actor) => actor?.account?.companyId ?? actor?.companyId ?? null;
+  async function employeeTrack(id, actor = null, companyId = null) {
     const { profile } = await accounts.getEmployee(actor, id);
-    return { track: trackOf(profile), startDate: profile?.job.startDate || null };
+    return {
+      companyId: companyOf(companyId || companyOfActor(actor)),
+      track: trackOf(profile),
+      startDate: profile?.job.startDate || null,
+    };
   }
   async function employeeOnboarding(id, actor = null) {
-    const { track } = await employeeTrack(id, actor);
-    await reconcileDocuments(id, track);
-    return (await onboardingOf(id, track)).onboarding;
+    const who = await employeeTrack(id, actor);
+    await reconcileDocuments(id, who);
+    return (await onboardingOf(id, who)).onboarding;
   }
   async function employeeAiProficiency(id, actor = null, query = {}) {
     const actorCompany = actor?.account?.companyId || DEFAULT_COMPANY_ID;
@@ -749,8 +810,8 @@ export function createOnboardingJourney({
       !['done', 'todo'].includes(status)
     )
       throw journeyErrors.stepStatusInvalid();
-    const { track } = await employeeTrack(id, actor);
-    const found = findStep(await template(track), stepId);
+    const who = await employeeTrack(id, actor);
+    const found = findStep(await templateOf(who), stepId);
     if (!found) throw journeyErrors.stepNotFound();
     if (found.step.completion !== 'hr_verify') throw journeyErrors.stepNotHrVerified();
     // A document step follows the employee's saved submission; HR cannot un-submit it.
@@ -767,7 +828,7 @@ export function createOnboardingJourney({
       id,
       'onboarding_step_verified',
       () =>
-        changeStep(id, track, stepId, (step, entry) => hrSetStatus(step, entry, status), {
+        changeStep(id, who, stepId, (step, entry) => hrSetStatus(step, entry, status), {
           source: 'hr',
           actorId: actor.account.id,
         }),
@@ -790,8 +851,11 @@ export function createOnboardingJourney({
     return { firstDay: presentFirstDay(stored) };
   }
   // GET /api/hr/employees: adds onboarding { percent, waitingOnHr, complete } to each
-  // item of accounts.listEmployees() (which carries the track).
-  async function withOnboarding(list) {
+  // item of accounts.listEmployees(actor) (which carries the track). That list
+  // holds only employees of the actor's company, so each is measured against
+  // that company's template.
+  async function withOnboarding(list, actor = null) {
+    const companyId = companyOf(companyOfActor(actor));
     const progress = new Map();
     for (let i = 0; i < list.length; i += 100) {
       const ids = list.slice(i, i + 100).map((item) => item.account.id);
@@ -805,7 +869,10 @@ export function createOnboardingJourney({
     }
     const out = [];
     for (const item of list) {
-      const view = buildOnboarding(await template(item.track), progress.get(item.account.id));
+      const view = buildOnboarding(
+        await template(companyId, item.track),
+        progress.get(item.account.id),
+      );
       out.push({
         ...item,
         onboarding: {
@@ -819,6 +886,7 @@ export function createOnboardingJourney({
   }
 
   return {
+    // template(companyId, track): the company's template of the track.
     template,
     myOnboarding,
     completeStep,
@@ -851,11 +919,11 @@ export function createOnboardingJourney({
     firestore: database,
     // A passed verification (quiz, matching) marks the step done for the employee.
     verifyStep: async (account, stepId) =>
-      markPassed(account, (await employeeFacts(account)).track, stepId),
+      markPassed(account, await employeeFacts(account), stepId),
     // An authorised coordinator confirms an employee's tool access.
     verifyEmployeeStep: async (actor, id, stepId) => {
-      const { track } = await employeeTrack(id, actor);
-      if (!findStep(await template(track), stepId)) throw journeyErrors.stepNotFound();
+      const who = await employeeTrack(id, actor);
+      if (!findStep(await templateOf(who), stepId)) throw journeyErrors.stepNotFound();
       return accounts.recordEmployeeChange(
         actor,
         id,
@@ -863,7 +931,7 @@ export function createOnboardingJourney({
         () =>
           changeStep(
             id,
-            track,
+            who,
             stepId,
             (step, entry) => (entry?.status === 'done' ? entry : { status: 'done' }),
             { source: 'hr', actorId: actor.account.id },

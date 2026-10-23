@@ -588,3 +588,20 @@ input.ai-slider {
   margin: 0;
   font-weight: 600;
 }
+
+.company-documents {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.company-documents li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.fp-other-documents {
+  margin-top: 16px;
+}

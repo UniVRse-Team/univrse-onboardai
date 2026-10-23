@@ -1000,3 +1000,29 @@ export function starterTemplate(track = defaultTrack) {
     })),
   };
 }
+
+// The starter pack's general chips (issue #126), the fallback for
+// config/quickQuestions["starter.<track>"]. The knowledge chips are the
+// askAlya questions of three starter steps (same text, so a helpful answer to
+// one still records that step's briefing); the personal chips are the
+// company-neutral first-day ones. No Luna Digital question is ever offered.
+const starterChipSteps = Object.freeze([
+  ['alignment', 'company-overview'],
+  ['policies', 'company-rules'],
+  ['team-support', 'who-to-ask'],
+]);
+export function starterQuickQuestions() {
+  const personal = generalChips().filter((chip) => chip.kind === 'personal');
+  return Object.fromEntries(
+    tracks.map((track) => [
+      track,
+      [
+        ...starterChipSteps.map(([areaId, slug]) => {
+          const { askAlya } = starterStepsByTrack[track][areaId].find((s) => s.slug === slug);
+          return { id: slug, label: askAlya, question: askAlya, kind: 'knowledge' };
+        }),
+        ...personal,
+      ],
+    ]),
+  );
+}

@@ -14,6 +14,9 @@ export const companyStatuses = Object.freeze(['active', 'disabled']);
 export const contentPacks = Object.freeze(['luna-digital', 'univrse', 'starter']);
 
 export const isCompanyId = (value) => typeof value === 'string' && companyIdPattern.test(value);
+// An account's or record's company: DEFAULT_COMPANY_ID when it has none.
+export const companyOrDefault = (companyId) =>
+  typeof companyId === 'string' && companyId ? companyId : DEFAULT_COMPANY_ID;
 
 // Luna Digital keeps its own content; every other company gets the starter pack.
 // univrse is retained as alias for backward compatibility.

@@ -6,6 +6,7 @@ import { companyKnowledgeRequestErrors } from './company-knowledge.mjs';
 import { readUploadedDocument } from './read-uploaded-document.mjs';
 import { workspaceLimits } from './workspace-limits.mjs';
 import { mountOnboardingRoutes } from './onboarding-routes.mjs';
+import { mountEmployeeCompanyDocumentRoutes } from './employee-company-documents.mjs';
 
 // HTTP routes for accounts (see docs/account-access.md for the contract):
 //   /api/auth/*           sign in, session, sign out, change password
@@ -14,6 +15,8 @@ import { mountOnboardingRoutes } from './onboarding-routes.mjs';
 //   /api/hr/employees/autofill  HR-only profile autofill (profile-autofill.mjs)
 //   /api/hr/departments*        HR-only departments and Employee ID prefixes (Settings)
 //   /api/hr/company-knowledge*  HR-only company knowledge uploads (company-knowledge.mjs)
+//   /api/me/company-documents*  the employee's own company's documents
+//                               (employee-company-documents.mjs, issue #126)
 //   onboarding journey routes   /api/me/onboarding*, /api/hr/support-requests*, ...
 //                               (onboarding-routes.mjs, docs/onboarding-journey.md)
 // GET /api/hr/support-summaries (named per-employee summaries) was removed by
@@ -64,7 +67,8 @@ export function sendAccountError(res, error) {
 // chats (deletion). companyKnowledge: the service from createCompanyKnowledge
 // (the HR library). journey: { onboarding, support, gaps, actions? } from
 // onboarding-journey.mjs, support-requests.mjs, knowledge-gaps.mjs and
-// agent-actions.mjs.
+// agent-actions.mjs. companyDocuments: the service from
+// createEmployeeCompanyDocuments (an employee's own company documents).
 export function mountAccountRoutes(
   app,
   {
@@ -75,6 +79,7 @@ export function mountAccountRoutes(
     companyKnowledge = null,
     journey = null,
     submissions = null,
+    companyDocuments = null,
   },
 ) {
   const setSession = (req, res, result) => {
@@ -226,7 +231,11 @@ export function mountAccountRoutes(
   // Each item: { account, profile, track, onboarding: { percent, waitingOnHr } }.
   employees.get('/employees', hr, async (req, res) => {
     const listed = await accounts.listEmployees(req.accountSession);
-    res.json({ employees: journey ? await journey.onboarding.withOnboarding(listed) : listed });
+    res.json({
+      employees: journey
+        ? await journey.onboarding.withOnboarding(listed, req.accountSession)
+        : listed,
+    });
   });
   // { profile } in; { employee, temporaryPassword } out. The server assigns the
   // Employee ID and the temporary password; this response is the only place
@@ -366,6 +375,8 @@ export function mountAccountRoutes(
     hrOnly: hr,
     submissions,
   });
+  if (companyDocuments)
+    mountEmployeeCompanyDocumentRoutes({ me, employeeOnly: employee, service: companyDocuments });
   for (const [path, router] of [
     ['/api/auth', auth],
     ['/api/me', me],

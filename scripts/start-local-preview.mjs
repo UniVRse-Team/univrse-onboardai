@@ -21,12 +21,17 @@ export async function startLocalPreview({
   const { avatarRoute } = await import('../server/avatar-route.mjs');
   const { createServer: createViteServer } = await import('vite');
   const { createMemorySubmissionFiles } = await import('../server/submission-files.mjs');
+  const { createMemoryCompanyDocumentFiles } = await import('../server/company-document-files.mjs');
   const { previewModels, previewRetrieve } = await import('./preview-chat.mjs');
+  // HR uploads are kept in memory too, so an employee's View link opens them.
+  const companyDocumentFiles = createMemoryCompanyDocumentFiles();
   const fixture = await startAccountsApp({
     mode: 'gemini-chat',
     models: previewModels,
     companyRetrieve: previewRetrieve,
     submissionFiles: createMemorySubmissionFiles(),
+    companyDocumentSync: companyDocumentFiles.documentSync,
+    companyDocumentFiles,
   });
   const hr = await fixture.hrBrowser();
   const { browser: employee } = await fixture.readyEmployee(hr, {

@@ -12,8 +12,8 @@ import { createProfileAutofill } from '../../server/profile-autofill.mjs';
 import { createFirestoreChatMemory } from '../../server/firestore-chat-memory.mjs';
 import { createConversationService } from '../../server/gemini-chat-workflow.mjs';
 import { hashPassword, verifyPassword } from '../../server/password-hashing.mjs';
-import { builtInTemplate } from '../../server/onboarding-content.mjs';
-import { DEFAULT_COMPANY_ID } from '../../server/companies.mjs';
+import { builtInTemplate, starterTemplate } from '../../server/onboarding-content.mjs';
+import { DEFAULT_COMPANY_ID, contentPackOf, templateDocId } from '../../server/companies.mjs';
 import { FakeFirestore } from './fake-firestore.mjs';
 import { createTestDatabase } from './test-database.mjs';
 
@@ -177,6 +177,9 @@ export async function startAccountsApp({
   companyRetrieve = fakeRetrieve,
   companyDocumentSync = undefined,
   submissionFiles = undefined,
+  // The company document file reader (company-document-files.mjs); createApp's
+  // default (DOCS_BUCKET through fetchImpl) when undefined.
+  companyDocumentFiles = undefined,
   fetchImpl: customFetch = undefined,
   models = fakeModels,
   // Optional voice stand-ins (POST /api/voice and /api/tts/local).
@@ -240,6 +243,7 @@ export async function startAccountsApp({
     conversationService,
     companyDocuments,
     submissionFiles,
+    ...(companyDocumentFiles !== undefined ? { companyDocumentFiles } : {}),
     companyRetrieve,
     getAccessToken,
     fetchImpl,
@@ -278,6 +282,32 @@ export async function startAccountsApp({
       companyId: DEFAULT_COMPANY_ID,
     });
   }
+  // A company (issue #86) with one department (prefix, so its employees get
+  // <prefix>-0001, ...) and a signed-in HR browser of it.
+  async function companyHrBrowser({
+    companyId,
+    name = companyId,
+    prefix = 'CO',
+    username = `${prefix}-HR`,
+    password = 'synthetic-company-hr-pass-1',
+  }) {
+    await store.createCompany(null, { ids: [companyId], name }, clock.now(), [
+      { name: 'People & Culture', prefix },
+    ]);
+    await store.createAccount({
+      username,
+      passwordHash: await hashing.hash(password),
+      role: 'hr',
+      mustChangePassword: false,
+      action: 'hr_account_created',
+      at: clock.now(),
+      companyId,
+    });
+    const hr = new Browser(url);
+    const signed = await hr.signIn(username, password);
+    if (signed.status !== 200) throw new Error('Company HR sign-in failed in test set-up');
+    return hr;
+  }
   return {
     url,
     env,
@@ -291,6 +321,7 @@ export async function startAccountsApp({
     accounts,
     browser: () => new Browser(url),
     createHr,
+    companyHrBrowser,
     // An HR browser that is signed in, and helpers creating employees with it.
     async hrBrowser(username = 'HR-0001', password = 'synthetic-hr-pass-1') {
       await createHr(username, password);
@@ -324,15 +355,18 @@ export async function startAccountsApp({
     // Records Alya's briefing (contract v1.5) of every required step of the
     // track, straight in the progress document, as POST .../briefing would.
     // For tests about something else; the briefing gate has its own tests.
-    briefAll(accountId, { track = 'employee', by = 'read' } = {}) {
+    briefAll(accountId, { track = 'employee', by = 'read', companyId = DEFAULT_COMPANY_ID } = {}) {
       const path = `onboardingProgress/${accountId}`;
       const current = firestore.read(path) || { accountId, steps: {} };
       const at = clock.now().toISOString();
       const steps = { ...current.steps };
-      // The stored template the server uses: current-version only; older ones are ignored.
-      const stored = firestore.read(`onboardingTemplates/${track}`);
-      const used =
-        stored?.version >= builtInTemplate(track).version ? stored : builtInTemplate(track);
+      // The stored template the server uses (the company's pack, issue #126):
+      // current-version only; older ones are ignored.
+      const fallback = (contentPackOf(companyId) === 'starter' ? starterTemplate : builtInTemplate)(
+        track,
+      );
+      const stored = firestore.read(`onboardingTemplates/${templateDocId(companyId, track)}`);
+      const used = stored?.version >= fallback.version ? stored : fallback;
       for (const area of used.areas)
         for (const step of area.steps)
           if (step.required && step.briefing)
