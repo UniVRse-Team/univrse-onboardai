@@ -115,3 +115,44 @@ test('autofillProfile sends the raw file with the upload headers', async () => {
     globalThis.fetch = real;
   }
 });
+
+test('accountApi.config GETs /api/config with no scope parameter or header (#117)', async () => {
+  const { accountApi } = await import('../../src/access/account-api.mjs');
+  const calls = [];
+  const out = await accountApi.config({
+    fetchImpl: async (path, init) => {
+      calls.push({ path, init });
+      return { status: 200, ok: true, json: async () => ({ accounts: true }) };
+    },
+  });
+  assert.deepEqual(out, { accounts: true });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, '/api/config');
+  assert.equal(calls[0].init.method, 'GET');
+});
+
+test('every accountApi.<name> used in src/ exists on accountApi (#117 guard)', async () => {
+  const { readdir, readFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const { accountApi } = await import('../../src/access/account-api.mjs');
+  const root = fileURLToPath(new URL('../../src/', import.meta.url));
+  const files = [];
+  const walk = async (dir) => {
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) await walk(full);
+      else if (/\.(jsx?|mjs)$/.test(e.name)) files.push(full);
+    }
+  };
+  await walk(root);
+  const used = new Set();
+  for (const file of files) {
+    const text = await readFile(file, 'utf8');
+    for (const m of text.matchAll(/\baccountApi\.([A-Za-z_$][\w$]*)/g)) used.add(m[1]);
+  }
+  assert.ok(used.has('config') && used.has('session'), 'scan found the known usages');
+  for (const name of used) {
+    assert.equal(typeof accountApi[name], 'function', `accountApi.${name} is missing`);
+  }
+});
