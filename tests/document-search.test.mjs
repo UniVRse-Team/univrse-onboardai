@@ -284,7 +284,8 @@ test('empty results, blank chunks and blank queries return no passages', async (
   });
   assert.deepEqual(await retrieve('quantum banana teleporter'), []);
   assert.deepEqual(await retrieve('   '), []);
-  assert.equal(calls.length, 1);
+  // The empty result is retried once with the lowest cut-off; the blank query sends nothing.
+  assert.equal(calls.length, 2);
 });
 
 test('HTTP 401, 403, 404, 400, 429 and 5xx map to safe errors without provider details', async () => {

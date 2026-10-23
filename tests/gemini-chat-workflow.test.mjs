@@ -250,7 +250,8 @@ for (const store of chatStores)
       assert.match(result.answer, /couldn’t find.*add a little detail.*check with HR/);
       assert.equal(result.source, 'No confirmed company source');
       assert.deepEqual(result.passages, []);
-      assert.equal(empty.queries.length, 1);
+      // An empty result is searched once more with the lowest relevance cut-off.
+      assert.equal(empty.queries.length, 2);
       assert.equal(answerCalls, 0);
     } finally {
       await service.close();
